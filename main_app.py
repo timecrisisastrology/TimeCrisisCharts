@@ -1,9 +1,12 @@
 import sys
-from datetime import datetime, timezone
-from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QVBoxLayout
+from datetime import datetime, timezone, timedelta
+from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QVBoxLayout, QHBoxLayout, QLineEdit
 from PyQt6.QtGui import QPalette, QColor
 from widgets import InfoPanel, StyledButton, ChartDrawingWidget
-from astro_engine import calculate_natal_chart, calculate_aspects
+from astro_engine import (
+    calculate_natal_chart, calculate_aspects, calculate_transits,
+    calculate_secondary_progressions, calculate_solar_return
+)
 
 class MainWindow(QMainWindow):
     """The main window of the application."""
@@ -12,73 +15,166 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Time Crisis Astrology")
         self.setGeometry(100, 100, 1200, 800)
 
+        # --- State Management ---
+        self.current_chart_type = 'natal'
+        self.current_date = datetime.now(timezone.utc)
+        self.reloc_lat = 41.87 # Pawtucket, RI default
+        self.reloc_lon = -71.38
+
+        # --- Store Chart Data ---
+        self.sample_birth_date = datetime(1990, 5, 15, 8, 30, 0, tzinfo=timezone.utc)
+        self.london_lat = 51.5074
+        self.london_lon = -0.1278
+        self.natal_planets, self.natal_houses = calculate_natal_chart(self.sample_birth_date, self.london_lat, self.london_lon)
+        self.natal_aspects = calculate_aspects(self.natal_planets, 7)
+
+        # --- Setup UI ---
+        self._setup_ui()
+
+    def _setup_ui(self):
+        """Initializes all user interface components."""
         palette = self.palette()
         palette.setColor(QPalette.ColorRole.Window, QColor("#200334"))
         self.setPalette(palette)
         
         main_widget = QWidget()
-        grid_layout = QGridLayout(main_widget)
-        
-        # --- ADDED: Top margin to push everything down ---
-        grid_layout.setContentsMargins(10, 20, 10, 10) # Left, Top, Right, Bottom
+        self.grid_layout = QGridLayout(main_widget)
+        self.grid_layout.setContentsMargins(10, 20, 10, 10)
 
-        # --- Create Info Panels ---
+        self._create_info_panels()
+        self._create_toolbar()
+        self._create_chart_area()
+        self._configure_layout()
+        
+        self.setCentralWidget(main_widget)
+        self._connect_signals()
+        self.update_chart() # Initial chart display
+
+    def _create_info_panels(self):
         natal_data = {
-            "Name": "Jane Doe",
-            "Birth Date": "15 May 1989",
-            "Birth Time": "08:30 AM",
-            "Location": "London, UK",
-            "Coords": "51.50° N, 0.12° W"
+            "Name": "Jane Doe", "Birth Date": "15 May 1989", "Birth Time": "08:30 AM",
+            "Location": "London, UK", "Coords": f"{self.london_lat:.2f}° N, {self.london_lon:.2f}° W"
         }
         birth_info_panel = InfoPanel("Natal Chart Data", natal_data)
 
+        # --- NEW: Relocation input fields ---
+        self.lat_input = QLineEdit(str(self.reloc_lat))
+        self.lon_input = QLineEdit(str(self.reloc_lon))
+        self.date_label = QLabel(self.current_date.strftime("%d %b %Y, %H:%M:%S %Z"))
+
         transit_data = {
-            "Current Date": "28 Sep 2025",
-            "Current Time": "12:22 PM",
-            "Location": "Pawtucket, RI",
-            "Progression": "Secondary",
-            "Mode": "Standard"
+            "Date": self.date_label,
+            "Reloc Lat": self.lat_input,
+            "Reloc Lon": self.lon_input,
         }
-        transit_info_panel = InfoPanel("Transit / Progression", transit_data)
+        self.transit_info_panel = InfoPanel("Dynamic Chart Controls", transit_data)
+        self.grid_layout.addWidget(birth_info_panel, 0, 0)
+        self.grid_layout.addWidget(self.transit_info_panel, 0, 1)
 
-        # --- Create Right Toolbar ---
+    def _create_toolbar(self):
         toolbar_container = QWidget()
-        toolbar_layout = QVBoxLayout(toolbar_container)
-        toolbar_layout.setContentsMargins(0, 0, 0, 0)
-        toolbar_layout.setSpacing(10)
-        # --- Add Buttons to Toolbar ---
-        toolbar_layout.addWidget(StyledButton("Natal"))
-        toolbar_layout.addWidget(StyledButton("Transit"))
-        toolbar_layout.addWidget(StyledButton("Progression"))
-        toolbar_layout.addWidget(StyledButton("Time Map"))
-        toolbar_layout.addStretch() # Pushes buttons to the top
+        main_toolbar_layout = QVBoxLayout(toolbar_container)
 
-        # --- Calculate a Sample Chart ---
-        sample_birth_date = datetime(1990, 5, 15, 8, 30, 0, tzinfo=timezone.utc)
-        london_lat = 51.5074
-        london_lon = -0.1278
-        planets, houses = calculate_natal_chart(sample_birth_date, london_lat, london_lon)
-        natal_aspects = calculate_aspects(planets, 7) # Use 7-degree orb for natal
+        # --- Chart Type Buttons ---
+        chart_type_layout = QVBoxLayout()
+        self.btn_natal = StyledButton("Natal")
+        self.btn_transit = StyledButton("Transit")
+        self.btn_progression = StyledButton("Progression")
+        self.btn_solar_return = StyledButton("Solar Return")
+        chart_type_layout.addWidget(self.btn_natal)
+        chart_type_layout.addWidget(self.btn_transit)
+        chart_type_layout.addWidget(self.btn_progression)
+        chart_type_layout.addWidget(self.btn_solar_return)
 
-        # --- Create Chart Area ---
-        chart_area = ChartDrawingWidget()
-        chart_area.set_chart_data(planets, houses, natal_aspects)
+        # --- Time Scrolling Buttons ---
+        time_scroll_layout = QGridLayout()
+        self.time_buttons = {
+            '<< DAY': -1, 'DAY >>': 1,
+            '<< WEEK': -7, 'WEEK >>': 7,
+            '<< MONTH': -30, 'MONTH >>': 30,
+            '<< YEAR': -365, 'YEAR >>': 365
+        }
+        row, col = 0, 0
+        for text, days in self.time_buttons.items():
+            btn = StyledButton(text)
+            btn.setProperty("days", days)
+            time_scroll_layout.addWidget(btn, row, col)
+            btn.clicked.connect(self.handle_time_scroll)
+            col += 1
+            if col > 1:
+                col = 0
+                row += 1
 
-        # --- Add Widgets to Grid ---
-        grid_layout.addWidget(birth_info_panel, 0, 0)
-        grid_layout.addWidget(transit_info_panel, 0, 1)
-        grid_layout.addWidget(toolbar_container, 0, 2, 2, 1) # Span 2 rows
-        grid_layout.addWidget(chart_area, 1, 0, 1, 2) # Span 2 columns
+        main_toolbar_layout.addLayout(chart_type_layout)
+        main_toolbar_layout.addSpacing(20)
+        main_toolbar_layout.addWidget(QLabel("Time Scrolling"))
+        main_toolbar_layout.addLayout(time_scroll_layout)
+        main_toolbar_layout.addStretch()
+        self.grid_layout.addWidget(toolbar_container, 0, 2, 2, 1)
+
+    def _create_chart_area(self):
+        self.chart_area = ChartDrawingWidget()
+        self.grid_layout.addWidget(self.chart_area, 1, 0, 1, 2)
+
+    def _configure_layout(self):
+        self.grid_layout.setColumnStretch(0, 3)
+        self.grid_layout.setColumnStretch(1, 3)
+        self.grid_layout.setColumnStretch(2, 1)
+        self.grid_layout.setRowStretch(0, 0)
+        self.grid_layout.setRowStretch(1, 1)
+
+    def _connect_signals(self):
+        self.btn_natal.clicked.connect(lambda: self.set_chart_type('natal'))
+        self.btn_transit.clicked.connect(lambda: self.set_chart_type('transit'))
+        self.btn_progression.clicked.connect(lambda: self.set_chart_type('progression'))
+        self.btn_solar_return.clicked.connect(lambda: self.set_chart_type('solar_return'))
+        self.lat_input.editingFinished.connect(self.handle_relocation)
+        self.lon_input.editingFinished.connect(self.handle_relocation)
+
+    def set_chart_type(self, chart_type):
+        self.current_chart_type = chart_type
+        self.update_chart()
+
+    def handle_time_scroll(self):
+        sender = self.sender()
+        days_to_add = sender.property("days")
+        self.current_date += timedelta(days=days_to_add)
+        self.update_chart()
+
+    def handle_relocation(self):
+        try:
+            self.reloc_lat = float(self.lat_input.text())
+            self.reloc_lon = float(self.lon_input.text())
+            self.update_chart()
+        except ValueError:
+            # Handle invalid input gracefully if needed
+            print("Invalid coordinates entered.")
+
+    def update_chart(self):
+        """The central method to recalculate and redraw the chart based on current state."""
+        self.date_label.setText(self.current_date.strftime("%d %b %Y, %H:%M:%S %Z"))
         
-        # --- Configure Stretches ---
-        grid_layout.setColumnStretch(0, 3) # Birth Info Panel
-        grid_layout.setColumnStretch(1, 3) # Transit Info Panel
-        grid_layout.setColumnStretch(2, 1) # Toolbar (narrower)
+        if self.current_chart_type == 'natal':
+            self.chart_area.set_chart_data(self.natal_planets, self.natal_houses, self.natal_aspects)
         
-        grid_layout.setRowStretch(0, 0) # Let panels define their height
-        grid_layout.setRowStretch(1, 1) # Let chart area expand
+        elif self.current_chart_type == 'transit':
+            transit_planets = calculate_transits(self.current_date)
+            self.chart_area.set_chart_data(
+                self.natal_planets, self.natal_houses, [], outer_planets=transit_planets
+            )
         
-        self.setCentralWidget(main_widget)
+        elif self.current_chart_type == 'progression':
+            progressed_planets = calculate_secondary_progressions(self.sample_birth_date, self.current_date)
+            self.chart_area.set_chart_data(
+                self.natal_planets, self.natal_houses, [], outer_planets=progressed_planets
+            )
+
+        elif self.current_chart_type == 'solar_return':
+            sr_year = self.current_date.year
+            sr_planets, sr_houses, _ = calculate_solar_return(self.sample_birth_date, sr_year, self.reloc_lat, self.reloc_lon)
+            self.chart_area.set_chart_data(
+                self.natal_planets, self.natal_houses, [], outer_planets=sr_planets, display_houses=sr_houses
+            )
 
 # --- Main execution block ---
 if __name__ == "__main__":

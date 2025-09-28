@@ -1,11 +1,11 @@
 import sys
 import math
-from PyQt6.QtWidgets import QWidget, QLabel, QFormLayout, QVBoxLayout, QFrame, QPushButton
-from PyQt6.QtGui import QFont, QPainter, QPen, QColor, QBrush
+from PyQt6.QtWidgets import QWidget, QLabel, QFormLayout, QVBoxLayout, QFrame, QPushButton, QLineEdit
+from PyQt6.QtGui import QFont, QPainter, QPen, QColor, QBrush, QFontMetrics
 from PyQt6.QtCore import Qt, QPointF
 
 class InfoPanel(QWidget):
-    """A custom, styled panel for displaying astrological data."""
+    """A custom, styled panel for displaying astrological data. Can accept QWidgets."""
     def __init__(self, title, data):
         super().__init__()
         # The InfoPanel itself is transparent; the QFrame inside provides the styled background and border.
@@ -22,11 +22,16 @@ class InfoPanel(QWidget):
                 border: 1px solid #3DF6FF;
                 border-radius: 5px;
             }
-            QLabel {
+            QLabel, QLineEdit {
                 color: #94EBFF;
                 font-family: "Titillium Web";
                 font-size: 10pt;
                 background-color: transparent;
+            }
+            QLineEdit {
+                border: 1px solid #75439E;
+                border-radius: 3px;
+                padding: 2px;
             }
         """)
 
@@ -44,7 +49,12 @@ class InfoPanel(QWidget):
         form_layout.setContentsMargins(15, 15, 15, 15)
 
         for label, value in data.items():
-            form_layout.addRow(f"{label}:", QLabel(value))
+            # If the value is already a widget, add it directly. Otherwise, create a QLabel.
+            if isinstance(value, QWidget):
+                widget = value
+            else:
+                widget = QLabel(str(value))
+            form_layout.addRow(f"{label}:", widget)
 
         main_layout.addWidget(container)
 
@@ -83,7 +93,9 @@ class ChartDrawingWidget(QFrame):
         # Chart data - will be populated by set_chart_data
         self.zodiac_signs = ["♈", "♉", "♊", "♋", "♌", "♍", "♎", "♏", "♐", "♑", "♒", "♓"]
         self.house_cusps = []
-        self.planets = {}
+        self.display_houses = [] # Houses to draw (can be natal or return)
+        self.planets = {} # Inner wheel planets
+        self.outer_planets = None # Outer wheel planets
         self.aspects = []
 
         # --- Planet & Color Definitions ---
@@ -102,12 +114,16 @@ class ChartDrawingWidget(QFrame):
             'Venus': QColor("#39FF14"), 'Saturn': QColor("#39FF14"),
         }
 
-    def set_chart_data(self, planets, houses, aspects):
-        """Receives the calculated chart data and triggers a repaint."""
-        self.planets = planets
-        self.house_cusps = houses
+    def set_chart_data(self, natal_planets, natal_houses, aspects, outer_planets=None, display_houses=None):
+        """Receives calculated chart data for single or bi-wheel charts and triggers a repaint."""
+        self.planets = natal_planets
+        self.house_cusps = natal_houses # Always store natal houses for reference
         self.aspects = aspects
-        self.update() # This is crucial - it tells Qt to redraw the widget
+        self.outer_planets = outer_planets
+
+        # Use specific houses for display if provided (for returns), else default to natal houses.
+        self.display_houses = display_houses if display_houses is not None else natal_houses
+        self.update()
 
     def paintEvent(self, event):
         """This method is called whenever the widget needs to be redrawn."""
@@ -119,7 +135,8 @@ class ChartDrawingWidget(QFrame):
         neon_pink = QColor("#FF01F9")
         neon_blue = QColor("#3DF6FF")
         center = QPointF(self.width() / 2, self.height() / 2)
-        radius = min(self.width(), self.height()) / 2 * 0.8  # Use 80% of available space
+        radius = min(self.width(), self.height()) / 2 * 0.9 # Use 90% of available space
+        inner_radius = radius * 0.25 # Radius of the new central circle
 
         # 1. Draw the main zodiac circle
         pen = QPen(neon_pink, 2, Qt.PenStyle.SolidLine)
@@ -127,67 +144,55 @@ class ChartDrawingWidget(QFrame):
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawEllipse(center, radius, radius)
 
-        # 2. Draw the zodiac sign glyphs
-        glyph_font = QFont("Titillium Web", 14)
+        # --- NEW: Draw the inner circle to contain aspect lines ---
+        painter.drawEllipse(center, inner_radius, inner_radius)
+
+        # 2. Draw the zodiac sign glyphs with glow
+        glyph_font = QFont("Titillium Web", 16)
         glyph_font.setBold(True)
         painter.setFont(glyph_font)
-        painter.setPen(neon_blue)
 
         for i, sign in enumerate(self.zodiac_signs):
-            # Calculate angle for each sign (Aries starts at 0 degrees, left side)
-            # We subtract 15 degrees to center the glyph in its 30-degree slice
             angle_deg = (i * 30) - 15
             angle_rad = math.radians(angle_deg)
-
-            # Position glyphs slightly inside the main circle for aesthetics
             glyph_radius = radius * 0.9
             x = center.x() + glyph_radius * math.cos(angle_rad)
             y = center.y() + glyph_radius * math.sin(angle_rad)
-
-            # Adjust position to center the glyph character
             font_metrics = painter.fontMetrics()
             text_width = font_metrics.horizontalAdvance(sign)
             text_height = font_metrics.height()
-            x -= text_width / 2
-            y += text_height / 4
+            point = QPointF(x - text_width / 2, y + text_height / 4)
 
-            painter.drawText(QPointF(x, y), sign)
+            # --- Draw with glow ---
+            self._draw_glow_text(painter, point, sign, glyph_font, neon_blue)
 
-        # 3. Draw the house cusp lines
-        painter.setPen(pen) # Use the same neon pink pen as the circle
-        for cusp_deg in self.house_cusps:
+        # 3. Draw the house cusp lines (using display_houses)
+        painter.setPen(QPen(neon_pink, 1, Qt.PenStyle.SolidLine))
+        for cusp_deg in self.display_houses:
             angle_rad = math.radians(cusp_deg)
-
-            # Calculate the point on the outer circle for the line end
+            x_start = center.x() + inner_radius * math.cos(angle_rad)
+            y_start = center.y() + inner_radius * math.sin(angle_rad)
             x_end = center.x() + radius * math.cos(angle_rad)
             y_end = center.y() + radius * math.sin(angle_rad)
+            painter.drawLine(QPointF(x_start, y_start), QPointF(x_end, y_end))
 
-            painter.drawLine(center, QPointF(x_end, y_end))
+        # --- NEW: Define radii for planet wheels ---
+        inner_planet_radius = radius * 0.45
+        outer_planet_radius = radius * 0.70
 
-        # 4. Draw the planet glyphs
-        planet_font = QFont("Titillium Web", 12)
-        painter.setFont(planet_font)
+        # --- NEW: Add a separation circle for bi-wheel ---
+        if self.outer_planets:
+            separation_radius = (inner_planet_radius + outer_planet_radius) / 2
+            painter.setPen(QPen(neon_blue, 1, Qt.PenStyle.DotLine))
+            painter.drawEllipse(center, separation_radius, separation_radius)
 
-        for name, position in self.planets.items():
-            angle_rad = math.radians(position)
+        # 4. Draw the planet glyphs (refactored)
+        self._draw_planets(painter, center, inner_planet_radius, self.planets)
+        if self.outer_planets:
+            self._draw_planets(painter, center, outer_planet_radius, self.outer_planets)
 
-            # Position planets within the inner part of the chart
-            planet_radius = radius * 0.65
-            x = center.x() + planet_radius * math.cos(angle_rad)
-            y = center.y() + planet_radius * math.sin(angle_rad)
-
-            # Center the glyph
-            font_metrics = painter.fontMetrics()
-            glyph = self.planet_glyphs.get(name, '?')
-            text_width = font_metrics.horizontalAdvance(glyph)
-            text_height = font_metrics.height()
-            x -= text_width / 2
-            y += text_height / 4
-
-            painter.setPen(self.planet_colors.get(name, QColor("white")))
-            painter.drawText(QPointF(x, y), glyph)
-
-        # 5. Draw the aspect lines
+        # 5. Draw the aspect lines (now contained within the inner circle)
+        aspect_radius = inner_radius * 0.85
         aspect_colors = {
             'Trine': QColor(61, 246, 255, 150), # Neon Blue, semi-transparent
             'Sextile': QColor(61, 246, 255, 150),
@@ -211,13 +216,56 @@ class ChartDrawingWidget(QFrame):
                     pen = QPen(color, 1.5, Qt.PenStyle.SolidLine)
                     painter.setPen(pen)
 
-                    # Calculate start and end points for the line
                     p1_rad = math.radians(p1_pos)
-                    p1_x = center.x() + planet_radius * math.cos(p1_rad)
-                    p1_y = center.y() + planet_radius * math.sin(p1_rad)
+                    p1_x = center.x() + aspect_radius * math.cos(p1_rad)
+                    p1_y = center.y() + aspect_radius * math.sin(p1_rad)
 
                     p2_rad = math.radians(p2_pos)
-                    p2_x = center.x() + planet_radius * math.cos(p2_rad)
-                    p2_y = center.y() + planet_radius * math.sin(p2_rad)
+                    p2_x = center.x() + aspect_radius * math.cos(p2_rad)
+                    p2_y = center.y() + aspect_radius * math.sin(p2_rad)
 
                     painter.drawLine(QPointF(p1_x, p1_y), QPointF(p2_x, p2_y))
+
+    def _draw_planets(self, painter, center, radius, planets):
+        """Helper method to draw a wheel of planets."""
+        planet_font = QFont("Titillium Web", 16)
+        planet_font.setBold(True)
+
+        for name, position in planets.items():
+            angle_rad = math.radians(position)
+            x = center.x() + radius * math.cos(angle_rad)
+            y = center.y() + radius * math.sin(angle_rad)
+
+            glyph = self.planet_glyphs.get(name, '?')
+            font_metrics = QFontMetrics(planet_font)
+            text_width = font_metrics.horizontalAdvance(glyph)
+            text_height = font_metrics.height()
+            point = QPointF(x - text_width / 2, y + text_height / 4)
+
+            planet_color = self.planet_colors.get(name, QColor("white"))
+            self._draw_glow_text(painter, point, glyph, planet_font, planet_color)
+
+    def _draw_glow_text(self, painter, point, text, font, color):
+        """A helper function to draw text with a neon glow effect."""
+        painter.setFont(font)
+
+        # 1. Draw the soft, wide outer glow
+        glow_color = QColor(color)
+        glow_color.setAlpha(80) # 83% luminosity is not a direct mapping, this controls transparency
+        pen = QPen(glow_color, 5, Qt.PenStyle.SolidLine)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        painter.drawText(point, text)
+
+        # 2. Draw the brighter, tighter inner glow
+        glow_color.setAlpha(150)
+        pen.setColor(glow_color)
+        pen.setWidth(3)
+        painter.setPen(pen)
+        painter.drawText(point, text)
+
+        # 3. Draw the main text on top
+        pen.setColor(color)
+        pen.setWidth(1)
+        painter.setPen(pen)
+        painter.drawText(point, text)
