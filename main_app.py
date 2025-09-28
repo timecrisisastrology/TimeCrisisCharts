@@ -1,8 +1,9 @@
 import sys
 from datetime import datetime, timezone, timedelta
-from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QVBoxLayout, QHBoxLayout, QLineEdit
+from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QVBoxLayout, QHBoxLayout, QLineEdit, QStackedWidget
 from PyQt6.QtGui import QPalette, QColor
 from widgets import InfoPanel, StyledButton, ChartDrawingWidget
+from time_map_widget import TimeMapWidget
 from astro_engine import (
     calculate_natal_chart, calculate_aspects, calculate_transits,
     calculate_secondary_progressions, calculate_solar_return
@@ -81,10 +82,13 @@ class MainWindow(QMainWindow):
         self.btn_transit = StyledButton("Transit")
         self.btn_progression = StyledButton("Progression")
         self.btn_solar_return = StyledButton("Solar Return")
+        self.btn_time_map = StyledButton("Time Map") # --- NEW BUTTON ---
         chart_type_layout.addWidget(self.btn_natal)
         chart_type_layout.addWidget(self.btn_transit)
         chart_type_layout.addWidget(self.btn_progression)
         chart_type_layout.addWidget(self.btn_solar_return)
+        chart_type_layout.addSpacing(20)
+        chart_type_layout.addWidget(self.btn_time_map)
 
         # --- Time Scrolling Buttons ---
         time_scroll_layout = QGridLayout()
@@ -113,8 +117,14 @@ class MainWindow(QMainWindow):
         self.grid_layout.addWidget(toolbar_container, 0, 2, 2, 1)
 
     def _create_chart_area(self):
+        # --- NEW: Use QStackedWidget to manage views ---
+        self.view_stack = QStackedWidget()
         self.chart_area = ChartDrawingWidget()
-        self.grid_layout.addWidget(self.chart_area, 1, 0, 1, 2)
+        self.time_map_area = TimeMapWidget()
+        self.view_stack.addWidget(self.chart_area)
+        self.view_stack.addWidget(self.time_map_area)
+
+        self.grid_layout.addWidget(self.view_stack, 1, 0, 1, 2)
 
     def _configure_layout(self):
         self.grid_layout.setColumnStretch(0, 3)
@@ -128,12 +138,18 @@ class MainWindow(QMainWindow):
         self.btn_transit.clicked.connect(lambda: self.set_chart_type('transit'))
         self.btn_progression.clicked.connect(lambda: self.set_chart_type('progression'))
         self.btn_solar_return.clicked.connect(lambda: self.set_chart_type('solar_return'))
+        self.btn_time_map.clicked.connect(self.show_time_map_view)
         self.lat_input.editingFinished.connect(self.handle_relocation)
         self.lon_input.editingFinished.connect(self.handle_relocation)
 
     def set_chart_type(self, chart_type):
         self.current_chart_type = chart_type
+        self.view_stack.setCurrentWidget(self.chart_area) # Switch to chart view
         self.update_chart()
+
+    def show_time_map_view(self):
+        self.time_map_area.set_chart_data(self.sample_birth_date, self.natal_planets, self.natal_houses)
+        self.view_stack.setCurrentWidget(self.time_map_area) # Switch to time map view
 
     def handle_time_scroll(self):
         sender = self.sender()
