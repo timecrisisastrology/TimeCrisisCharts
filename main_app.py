@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QVBoxLayout
 from PyQt6.QtGui import QPalette, QColor
 from widgets import InfoPanel, StyledButton, ChartDrawingWidget
-from astro_engine import calculate_natal_chart
+from astro_engine import calculate_natal_chart, calculate_aspects
 
 class MainWindow(QMainWindow):
     """The main window of the application."""
@@ -58,10 +58,11 @@ class MainWindow(QMainWindow):
         london_lat = 51.5074
         london_lon = -0.1278
         planets, houses = calculate_natal_chart(sample_birth_date, london_lat, london_lon)
+        natal_aspects = calculate_aspects(planets, 7) # Use 7-degree orb for natal
 
         # --- Create Chart Area ---
         chart_area = ChartDrawingWidget()
-        chart_area.set_chart_data(houses) # Pass the calculated house data
+        chart_area.set_chart_data(planets, houses, natal_aspects)
 
         # --- Add Widgets to Grid ---
         grid_layout.addWidget(birth_info_panel, 0, 0)
