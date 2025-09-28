@@ -1,7 +1,9 @@
 import sys
+from datetime import datetime, timezone
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QVBoxLayout
 from PyQt6.QtGui import QPalette, QColor
 from widgets import InfoPanel, StyledButton, ChartDrawingWidget
+from astro_engine import calculate_natal_chart
 
 class MainWindow(QMainWindow):
     """The main window of the application."""
@@ -51,8 +53,15 @@ class MainWindow(QMainWindow):
         toolbar_layout.addWidget(StyledButton("Time Map"))
         toolbar_layout.addStretch() # Pushes buttons to the top
 
+        # --- Calculate a Sample Chart ---
+        sample_birth_date = datetime(1990, 5, 15, 8, 30, 0, tzinfo=timezone.utc)
+        london_lat = 51.5074
+        london_lon = -0.1278
+        planets, houses = calculate_natal_chart(sample_birth_date, london_lat, london_lon)
+
         # --- Create Chart Area ---
         chart_area = ChartDrawingWidget()
+        chart_area.set_chart_data(houses) # Pass the calculated house data
 
         # --- Add Widgets to Grid ---
         grid_layout.addWidget(birth_info_panel, 0, 0)
