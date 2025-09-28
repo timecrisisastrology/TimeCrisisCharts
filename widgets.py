@@ -201,15 +201,15 @@ class ChartDrawingWidget(QFrame):
             'Conjunction': QColor(200, 200, 200, 150) # Light Gray, semi-transparent
         }
 
-        for aspect_str in self.aspects:
-            parts = aspect_str.split()
-            if len(parts) < 3: continue
-
-            p1_name, aspect_name, p2_name = parts[0], parts[1], parts[2]
+        for aspect_info in self.aspects:
+            p1_name = aspect_info['p1']
+            aspect_name = aspect_info['aspect']
+            p2_name = aspect_info['p2']
 
             if p1_name in self.planets and p2_name in self.planets:
-                p1_pos = self.planets[p1_name]
-                p2_pos = self.planets[p2_name]
+                # FIX: Access the longitude (first element) from the position tuple
+                p1_pos = self.planets[p1_name][0]
+                p2_pos = self.planets[p2_name][0]
 
                 color = aspect_colors.get(aspect_name)
                 if color:
@@ -232,7 +232,8 @@ class ChartDrawingWidget(QFrame):
         planet_font.setBold(True)
 
         for name, position in planets.items():
-            angle_rad = math.radians(position)
+            # FIX: Access the longitude (first element) from the position tuple
+            angle_rad = math.radians(position[0])
             x = center.x() + radius * math.cos(angle_rad)
             y = center.y() + radius * math.sin(angle_rad)
 
