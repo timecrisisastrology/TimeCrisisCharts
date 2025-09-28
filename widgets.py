@@ -71,3 +71,17 @@ class StyledButton(QPushButton):
                 color: #200334;
             }
         """)
+
+class ChartDrawingWidget(QFrame):
+    """A custom widget for drawing the astrological chart."""
+    def __init__(self):
+        super().__init__()
+        # This will be the main canvas for our chart drawing.
+        # We'll give it a slight border to make it visible for now.
+        self.setStyleSheet("""
+            QFrame {
+                background-color: transparent;
+                border: 1px solid #75439E;
+                border-radius: 5px;
+            }
+        """)

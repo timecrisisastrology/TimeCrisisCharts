@@ -1,7 +1,7 @@
 import sys
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QVBoxLayout
 from PyQt6.QtGui import QPalette, QColor
-from widgets import InfoPanel, StyledButton
+from widgets import InfoPanel, StyledButton, ChartDrawingWidget
 
 class MainWindow(QMainWindow):
     """The main window of the application."""
@@ -39,8 +39,6 @@ class MainWindow(QMainWindow):
         }
         transit_info_panel = InfoPanel("Transit / Progression", transit_data)
 
-        chart_area = QWidget() # Placeholder for the main chart
-
         # --- Create Right Toolbar ---
         toolbar_container = QWidget()
         toolbar_layout = QVBoxLayout(toolbar_container)
@@ -53,7 +51,8 @@ class MainWindow(QMainWindow):
         toolbar_layout.addWidget(StyledButton("Time Map"))
         toolbar_layout.addStretch() # Pushes buttons to the top
 
-        chart_area = QWidget() # Placeholder for the main chart
+        # --- Create Chart Area ---
+        chart_area = ChartDrawingWidget()
 
         # --- Add Widgets to Grid ---
         grid_layout.addWidget(birth_info_panel, 0, 0)
