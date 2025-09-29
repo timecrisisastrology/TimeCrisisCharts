@@ -5,7 +5,7 @@ from PyQt6.QtCore import Qt
 from widgets import StyledButton
 from timeline_grid_widget import TimelineGridWidget
 from astro_engine import calculate_secondary_progressions, calculate_lunar_phase
-from datetime import datetime
+from datetime import datetime, timedelta
 
 class TimeMapWidget(QWidget):
     """A custom widget to display the 'Time Map' timeline view."""
