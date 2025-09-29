@@ -138,17 +138,16 @@ class ChartDrawingWidget(QFrame):
         radius = min(self.width(), self.height()) / 2 * 0.9 # Use 90% of available space
         inner_radius = radius * 0.25 # Radius of the new central circle
 
-        # 1. Draw the main zodiac circle
-        pen = QPen(neon_pink, 2, Qt.PenStyle.SolidLine)
+        # 1. Draw the concentric chart rings
+        pen = QPen(neon_pink, 3, Qt.PenStyle.SolidLine) # Thicker main ring
         painter.setPen(pen)
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawEllipse(center, radius, radius)
-
-        # --- NEW: Draw the inner circle to contain aspect lines ---
-        painter.drawEllipse(center, inner_radius, inner_radius)
+        painter.drawEllipse(center, radius, radius) # Outer ring
+        painter.drawEllipse(center, radius * 0.85, radius * 0.85) # Inner ring of the zodiac band
+        painter.drawEllipse(center, inner_radius, inner_radius) # Inner-most circle for aspects
 
         # 2. Draw the zodiac sign glyphs with glow
-        glyph_font = QFont("Titillium Web", 16)
+        glyph_font = QFont("Titillium Web", 24) # Increased glyph size
         glyph_font.setBold(True)
         painter.setFont(glyph_font)
 
@@ -166,7 +165,19 @@ class ChartDrawingWidget(QFrame):
             # --- Draw with glow ---
             self._draw_glow_text(painter, point, sign, glyph_font, neon_blue)
 
+        # 2a. Draw the zodiac dividers
+        painter.setPen(QPen(neon_blue, 1, Qt.PenStyle.SolidLine))
+        for i in range(12):
+            angle_deg = i * 30
+            angle_rad = math.radians(angle_deg)
+            x_start = center.x() + radius * 0.85 * math.cos(angle_rad)
+            y_start = center.y() + radius * 0.85 * math.sin(angle_rad)
+            x_end = center.x() + radius * math.cos(angle_rad)
+            y_end = center.y() + radius * math.sin(angle_rad)
+            painter.drawLine(QPointF(x_start, y_start), QPointF(x_end, y_end))
+
         # 3. Draw the house cusp lines (using display_houses)
+        self._draw_cusp_labels(painter, center, radius, neon_blue) # Draw cusp labels
         painter.setPen(QPen(neon_pink, 1, Qt.PenStyle.SolidLine))
         for cusp_deg in self.display_houses:
             angle_rad = math.radians(cusp_deg)
@@ -186,12 +197,15 @@ class ChartDrawingWidget(QFrame):
             painter.setPen(QPen(neon_blue, 1, Qt.PenStyle.DotLine))
             painter.drawEllipse(center, separation_radius, separation_radius)
 
-        # 4. Draw the planet glyphs (refactored)
+        # 4. Draw the house numbers
+        self._draw_house_numbers(painter, center, inner_radius * 1.2, neon_blue)
+
+        # 5. Draw the planet glyphs (refactored)
         self._draw_planets(painter, center, inner_planet_radius, self.planets)
         if self.outer_planets:
             self._draw_planets(painter, center, outer_planet_radius, self.outer_planets)
 
-        # 5. Draw the aspect lines (now contained within the inner circle)
+        # 6. Draw the aspect lines (now contained within the inner circle)
         aspect_radius = inner_radius * 0.85
         aspect_colors = {
             'Trine': QColor(61, 246, 255, 150), # Neon Blue, semi-transparent
@@ -228,7 +242,7 @@ class ChartDrawingWidget(QFrame):
 
     def _draw_planets(self, painter, center, radius, planets):
         """Helper method to draw a wheel of planets."""
-        planet_font = QFont("Titillium Web", 16)
+        planet_font = QFont("Titillium Web", 20) # Increased planet size
         planet_font.setBold(True)
 
         for name, position in planets.items():
@@ -246,27 +260,101 @@ class ChartDrawingWidget(QFrame):
             planet_color = self.planet_colors.get(name, QColor("white"))
             self._draw_glow_text(painter, point, glyph, planet_font, planet_color)
 
+    def _draw_cusp_labels(self, painter, center, radius, color):
+        """Helper method to draw the degree labels for each house cusp, rotated along the wheel."""
+        if not self.display_houses:
+            return
+
+        label_font = QFont("Titillium Web", 12) # Increased cusp label size
+        label_font.setBold(True)
+
+        def format_degree(deg):
+            deg = deg % 360
+            sign_index = int(deg / 30)
+            deg_in_sign = deg % 30
+            minutes = (deg_in_sign - int(deg_in_sign)) * 60
+            return f"{int(deg_in_sign)}° {self.zodiac_signs[sign_index]} {int(minutes)}'"
+
+        for i, cusp_deg in enumerate(self.display_houses):
+            text = format_degree(cusp_deg)
+            if i == 0:  # Special formatting for Ascendant
+                text = f"ASC = {text}"
+
+            rotation_angle = cusp_deg - 90
+            label_radius = radius * 1.07
+            angle_rad = math.radians(cusp_deg)
+            x = center.x() + label_radius * math.cos(angle_rad)
+            y = center.y() + label_radius * math.sin(angle_rad)
+
+            painter.save()
+            painter.translate(x, y)
+
+            if 90 < cusp_deg < 270:
+                painter.rotate(rotation_angle + 180)
+            else:
+                painter.rotate(rotation_angle)
+
+            font_metrics = QFontMetrics(label_font)
+            text_width = font_metrics.horizontalAdvance(text)
+            text_height = font_metrics.height()
+
+            draw_point = QPointF(-text_width / 2, text_height / 4)
+            self._draw_glow_text(painter, draw_point, text, label_font, color)
+            painter.restore()
+
+    def _draw_house_numbers(self, painter, center, radius, color):
+        """Helper method to draw the house numbers in the center of each house."""
+        if not self.display_houses:
+            return
+
+        house_font = QFont("Titillium Web", 12)
+        house_font.setBold(True)
+
+        for i in range(12):
+            house_num = i + 1
+            start_angle = self.display_houses[i]
+            end_angle = self.display_houses[(i + 1) % 12]
+
+            # Handle the wrap-around from 360 to 0 degrees for calculation
+            if end_angle < start_angle:
+                end_angle += 360
+
+            mid_angle_deg = (start_angle + end_angle) / 2
+            angle_rad = math.radians(mid_angle_deg)
+
+            x = center.x() + radius * math.cos(angle_rad)
+            y = center.y() + radius * math.sin(angle_rad)
+
+            text = str(house_num)
+            font_metrics = QFontMetrics(house_font)
+            text_width = font_metrics.horizontalAdvance(text)
+            text_height = font_metrics.height()
+            point = QPointF(x - text_width / 2, y + text_height / 4)
+
+            self._draw_glow_text(painter, point, text, house_font, color)
+
     def _draw_glow_text(self, painter, point, text, font, color):
-        """A helper function to draw text with a neon glow effect."""
+        """A helper function to draw text with a very intense neon glow effect."""
         painter.setFont(font)
 
-        # 1. Draw the soft, wide outer glow
+        # 1. Draw the wide, soft outer glow (simulating bloom)
         glow_color = QColor(color)
-        glow_color.setAlpha(80) # 83% luminosity is not a direct mapping, this controls transparency
-        pen = QPen(glow_color, 5, Qt.PenStyle.SolidLine)
+        glow_color.setAlpha(80) # Increased alpha for a stronger bloom
+        pen = QPen(glow_color, 15, Qt.PenStyle.SolidLine) # Wider pen for more glow
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter.setPen(pen)
         painter.drawText(point, text)
 
         # 2. Draw the brighter, tighter inner glow
-        glow_color.setAlpha(150)
+        glow_color.setAlpha(180) # Much brighter inner glow
         pen.setColor(glow_color)
-        pen.setWidth(3)
+        pen.setWidth(7) # Tighter than the outer glow, but still substantial
         painter.setPen(pen)
         painter.drawText(point, text)
 
-        # 3. Draw the main text on top
-        pen.setColor(color)
+        # 3. Draw the core text in a very light shade to make it pop
+        core_color = color.lighter(170)
+        pen.setColor(core_color)
         pen.setWidth(1)
         painter.setPen(pen)
         painter.drawText(point, text)
