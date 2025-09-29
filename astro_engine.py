@@ -8,11 +8,12 @@ PLANETS = {
 }
 
 def get_planet_position(calculation_date, planet_id):
-    """Calculates the longitude of a single planet for a given UTC datetime."""
+    """Calculates the longitude and speed of a single planet for a given UTC datetime."""
     julian_day_utc = swe.utc_to_jd(calculation_date.year, calculation_date.month, calculation_date.day, calculation_date.hour, calculation_date.minute, calculation_date.second, 1)[1]
-    planet_position_data = swe.calc_ut(julian_day_utc, planet_id, swe.FLG_SWIEPH)
+    planet_position_data = swe.calc_ut(julian_day_utc, planet_id, swe.FLG_SWIEPH | swe.FLG_SPEED)
     longitude = planet_position_data[0][0]
-    return longitude
+    speed = planet_position_data[0][3]
+    return longitude, speed
 
 def calculate_natal_chart(birth_date, latitude, longitude, house_system=b'P'):
     """Calculates the natal chart (planets and houses) for a given time and location."""
@@ -26,25 +27,51 @@ def calculate_natal_chart(birth_date, latitude, longitude, house_system=b'P'):
     return chart_planets, chart_houses
 
 def calculate_aspects(planets, orb):
-    """Finds aspects between planets within a given orb."""
+    """Finds aspects between planets within a given orb. Returns list of dicts."""
     aspects_found = []
     planet_names = list(planets.keys())
-    aspect_definitions = {
-        'Conjunction': 0, 'Semi-Sextile': 30, 'Sextile': 60, 'Square': 90,
-        'Trine': 120, 'Inconjunct': 150, 'Opposition': 180
-    }
+    aspect_definitions = {'Conjunction': 0, 'Opposition': 180, 'Trine': 120, 'Square': 90, 'Sextile': 60}
+
     for i in range(len(planet_names)):
         for j in range(i + 1, len(planet_names)):
             p1_name = planet_names[i]
             p2_name = planet_names[j]
-            p1_pos = planets[p1_name]
-            p2_pos = planets[p2_name]
+            p1_pos, p1_speed = planets[p1_name]
+            p2_pos, p2_speed = planets[p2_name]
+
             angle = abs(p1_pos - p2_pos)
-            if angle > 180:
-                angle = 360 - angle
+            if angle > 180: angle = 360 - angle
+
             for aspect_name, aspect_angle in aspect_definitions.items():
-                if abs(angle - aspect_angle) <= orb:
-                    aspect_info = f"{p1_name} {aspect_name} {p2_name}"
+                current_orb = abs(angle - aspect_angle)
+                if current_orb <= orb:
+                    sorted_planets = sorted([p1_name, p2_name])
+                    aspect_info = {
+                        'p1': sorted_planets[0], 'aspect': aspect_name, 'p2': sorted_planets[1],
+                        'name': f"{sorted_planets[0]} {aspect_name} {sorted_planets[1]}",
+                        'orb': current_orb
+                    }
+                    aspects_found.append(aspect_info)
+    return aspects_found
+
+def find_cross_aspects(planets1, planets2, orb):
+    """Finds aspects between two different sets of planets. Returns list of dicts."""
+    aspects_found = []
+    aspect_definitions = {'Conjunction': 0, 'Opposition': 180, 'Trine': 120, 'Square': 90, 'Sextile': 60}
+
+    for p1_name, (p1_pos, p1_speed) in planets1.items():
+        for p2_name, (p2_pos, p2_speed) in planets2.items():
+            angle = abs(p1_pos - p2_pos)
+            if angle > 180: angle = 360 - angle
+
+            for aspect_name, aspect_angle in aspect_definitions.items():
+                current_orb = abs(angle - aspect_angle)
+                if current_orb <= orb:
+                    aspect_info = {
+                        'p1': p1_name, 'aspect': aspect_name, 'p2': p2_name,
+                        'name': f"{p1_name} {aspect_name} {p2_name}",
+                        'orb': current_orb
+                    }
                     aspects_found.append(aspect_info)
     return aspects_found
 
@@ -157,24 +184,24 @@ if __name__ == "__main__":
     print("--- Natal Chart ---")
     planets, houses = calculate_natal_chart(sample_birth_date, pawtucket_lat, pawtucket_lon)
     for name, position in planets.items():
-        print(f"{name}: {position:.2f}")
+        print(f"{name}: {position[0]:.2f}") # Access longitude from tuple
 
     # --- Test Secondary Progressions ---
     print("\n--- Secondary Progressions ---")
     progressed_planets = calculate_secondary_progressions(sample_birth_date, today)
     for name, position in progressed_planets.items():
-        print(f"Progressed {name}: {position:.2f}")
+        print(f"Progressed {name}: {position[0]:.2f}") # Access longitude from tuple
 
     # --- Test Solar Return ---
     print("\n--- Solar Return for 2025 ---")
     sr_planets, sr_houses, sr_date = calculate_solar_return(sample_birth_date, 2025, pawtucket_lat, pawtucket_lon)
     print(f"Solar Return Date: {sr_date.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-    print(f"SR Sun Position: {sr_planets['Sun']:.2f} (Natal: {planets['Sun']:.2f})")
+    print(f"SR Sun Position: {sr_planets['Sun'][0]:.2f} (Natal: {planets['Sun'][0]:.2f})")
     print(f"SR Ascendant: {sr_houses[0]:.2f}")
 
     # --- Test Lunar Return ---
     print("\n--- Next Lunar Return ---")
     lr_planets, lr_houses, lr_date = calculate_lunar_return(sample_birth_date, today, pawtucket_lat, pawtucket_lon)
     print(f"Lunar Return Date: {lr_date.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-    print(f"LR Moon Position: {lr_planets['Moon']:.2f} (Natal: {planets['Moon']:.2f})")
+    print(f"LR Moon Position: {lr_planets['Moon'][0]:.2f} (Natal: {planets['Moon'][0]:.2f})")
     print(f"LR Ascendant: {lr_houses[0]:.2f}")
