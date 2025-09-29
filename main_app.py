@@ -148,7 +148,7 @@ class MainWindow(QMainWindow):
         self.update_chart()
 
     def show_time_map_view(self):
-        self.time_map_area.set_chart_data(self.sample_birth_date, self.natal_planets, self.natal_houses)
+        self.time_map_area.set_chart_data("Jane Doe", self.sample_birth_date, self.natal_planets, self.natal_houses)
         self.view_stack.setCurrentWidget(self.time_map_area) # Switch to time map view
 
     def handle_time_scroll(self):
