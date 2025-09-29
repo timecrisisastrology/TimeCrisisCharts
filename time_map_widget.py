@@ -6,7 +6,8 @@ from PyQt6.QtCore import Qt
 from widgets import StyledButton
 from astro_engine import (
     calculate_transits, calculate_secondary_progressions,
-    calculate_aspects, find_cross_aspects
+    calculate_aspects, find_cross_aspects,
+    PLANETS, get_planet_position
 )
 
 class TimelineGridWidget(QFrame):
