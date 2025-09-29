@@ -61,8 +61,9 @@ class TimelineGridWidget(QFrame):
 
             prog_aspects = calculate_aspects(progressed_planets, 1)
             major_transits = {p: transit_planets[p] for p in ['Saturn', 'Uranus', 'Neptune', 'Pluto']}
-            natal_positions_with_speed = {p: (pos, 0) for p, pos in self.natal_planets.items()}
-            transit_aspects = find_cross_aspects(major_transits, natal_positions_with_speed, 2)
+            # The natal_planets dictionary already contains the position and speed as a tuple,
+            # which is the format expected by find_cross_aspects.
+            transit_aspects = find_cross_aspects(major_transits, self.natal_planets, 2)
 
             self.timeline_aspects[date_key] = {
                 'lunar': [a for a in prog_aspects if a['p1'] == 'Moon' or a['p2'] == 'Moon'],

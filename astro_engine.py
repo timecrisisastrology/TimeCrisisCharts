@@ -111,9 +111,10 @@ def calculate_solar_arc_progressions(birth_date, target_date):
 
     natal_planets, _ = calculate_natal_chart(birth_date, 0, 0)
     sa_planets = {}
-    for name, natal_pos in natal_planets.items():
-        sa_pos = (natal_pos + solar_arc) % 360
-        sa_planets[name] = sa_pos
+    for name, (natal_lon, natal_speed) in natal_planets.items():
+        sa_lon = (natal_lon + solar_arc) % 360
+        # The speed of a solar-arced planet is conventionally the same as the natal speed.
+        sa_planets[name] = (sa_lon, natal_speed)
     return sa_planets
 
 def _find_return_jd(natal_lon, body_id, start_jd):
