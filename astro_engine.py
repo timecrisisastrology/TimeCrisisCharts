@@ -174,6 +174,52 @@ def calculate_lunar_return(birth_date, target_date, latitude, longitude):
     return_planets, return_houses = calculate_natal_chart(return_date, latitude, longitude)
     return return_planets, return_houses, return_date
 
+# --- UI HELPER FUNCTIONS ---
+
+def get_zodiac_sign(degree):
+    """Returns the zodiac sign for a given degree."""
+    signs = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra",
+             "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"]
+    return signs[int(degree / 30)]
+
+def get_house_ruler(house_cusp_degree):
+    """Returns the ruling planet for a house based on its cusp sign."""
+    sign = get_zodiac_sign(house_cusp_degree)
+    # Traditional rulers
+    rulership = {
+        "Aries": "Mars", "Taurus": "Venus", "Gemini": "Mercury",
+        "Cancer": "Moon", "Leo": "Sun", "Virgo": "Mercury",
+        "Libra": "Venus", "Scorpio": "Mars", # Traditional: Mars, Modern: Pluto
+        "Sagittarius": "Jupiter", "Capricorn": "Saturn",
+        "Aquarius": "Saturn", # Traditional: Saturn, Modern: Uranus
+        "Pisces": "Jupiter" # Traditional: Jupiter, Modern: Neptune
+    }
+    return rulership.get(sign, "Unknown")
+
+def calculate_lunar_phase(sun_pos, moon_pos):
+    """Calculates the name and angle of the lunar phase."""
+    angle = (moon_pos - sun_pos) % 360
+
+    if 0 <= angle < 45:
+        phase_name = "New Moon"
+    elif 45 <= angle < 90:
+        phase_name = "Crescent"
+    elif 90 <= angle < 135:
+        phase_name = "First Quarter"
+    elif 135 <= angle < 180:
+        phase_name = "Gibbous"
+    elif 180 <= angle < 225:
+        phase_name = "Full Moon"
+    elif 225 <= angle < 270:
+        phase_name = "Disseminating"
+    elif 270 <= angle < 315:
+        phase_name = "Third Quarter"
+    else: # 315 to 360
+        phase_name = "Balsamic"
+
+    return phase_name, angle
+
+
 if __name__ == "__main__":
     # --- Test Data ---
     sample_birth_date = datetime(1990, 5, 15, 8, 30, 0, tzinfo=timezone.utc) # Jane Doe

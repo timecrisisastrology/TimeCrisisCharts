@@ -1,32 +1,48 @@
 from datetime import datetime, timedelta
 from PyQt6.QtWidgets import QFrame, QToolTip
-from PyQt6.QtGui import QFont, QColor, QPainter, QPen
-from PyQt6.QtCore import Qt, QPointF
+from PyQt6.QtGui import QFont, QColor, QPainter, QPen, QBrush, QPainterPath
+from PyQt6.QtCore import Qt, QPointF, QRectF
 from astro_engine import (
     calculate_secondary_progressions,
     calculate_aspects, find_cross_aspects,
-    PLANETS, get_planet_position
+    PLANETS, get_planet_position,
+    get_house_ruler, get_zodiac_sign
 )
 
 class TimelineGridWidget(QFrame):
-    """A dedicated widget for drawing the timeline grid and aspect lines."""
+    """A dedicated widget for drawing the timeline grid and aspect lines based on the new design."""
     def __init__(self):
         super().__init__()
         self.setObjectName("timeline-grid")
         self.setFrameShape(QFrame.Shape.StyledPanel)
-        self.setMinimumHeight(300)
-        self.setMouseTracking(True) # Enable hover events
+        self.setMinimumHeight(600) # Increased height for new layout
+        self.setMouseTracking(True)
 
-        # State
+        # State & Data
         self.start_date = datetime.now()
         self.months_to_display = 3
-
-        # Data
         self.birth_date = None
         self.natal_planets = {}
         self.natal_houses = []
-        self.timeline_aspects = {} # Daily cache
-        self.aspect_events = [] # Processed list of aspect event dictionaries
+        self.aspect_events = []
+        self.timeline_aspects_cache = {} # Cache for daily calculations
+
+        # Theming
+        self.colors = {
+            'grid': QColor("#3DF6FF"),
+            'text': QColor("#94EBFF"),
+            'lunar': QColor("#F9EEFB"),
+            'solar': QColor("#75439E"),
+            'transit': QColor("#3DF6FF"),
+            'star': QColor("#FFFF00"),
+            'box_bg': QColor(255, 1, 249, 20), # Semi-transparent pink
+        }
+        self.fonts = {
+            'year': QFont("TT Supermolot Neue Condensed", 14, QFont.Weight.Bold),
+            'month': QFont("Titillium Web", 12),
+            'grid': QFont("Titillium Web", 9),
+            'star': QFont("Titillium Web", 16, QFont.Weight.Bold)
+        }
 
     def set_chart_data(self, birth_date, natal_planets, natal_houses):
         """Receives natal data and triggers the aspect calculation for the timeline."""
@@ -34,12 +50,14 @@ class TimelineGridWidget(QFrame):
         self.natal_planets = natal_planets
         self.natal_houses = natal_houses
         self._calculate_and_process_timeline()
-        self.update() # Redraw with new data
+        self.update()
 
     def set_timescale(self, months):
         self.months_to_display = months
         self._calculate_and_process_timeline()
         self.update()
+
+    # --- Data Calculation ---
 
     def _calculate_and_process_timeline(self):
         """High-level method to run the full calculation and processing pipeline."""
@@ -47,9 +65,8 @@ class TimelineGridWidget(QFrame):
         self._process_aspect_events()
 
     def _calculate_daily_aspects(self):
-        """Calculates all aspects for each day in the view and stores them in a cache."""
         if not self.birth_date or not self.natal_planets: return
-        self.timeline_aspects = {}
+        self.timeline_aspects_cache = {}
         num_days = self.months_to_display * 30
 
         for i in range(num_days + 2):
@@ -60,172 +77,305 @@ class TimelineGridWidget(QFrame):
             progressed_planets = calculate_secondary_progressions(self.birth_date, current_date)
 
             prog_aspects = calculate_aspects(progressed_planets, 1)
-            major_transits = {p: transit_planets[p] for p in ['Saturn', 'Uranus', 'Neptune', 'Pluto']}
-            # The natal_planets dictionary already contains the position and speed as a tuple,
-            # which is the format expected by find_cross_aspects.
-            transit_aspects = find_cross_aspects(major_transits, self.natal_planets, 2)
+            major_transits = {p: transit_planets[p] for p in ['Jupiter', 'Saturn', 'Uranus', 'Neptune', 'Pluto']}
+            transit_aspects = find_cross_aspects(major_transits, self.natal_planets, 1.5)
 
-            self.timeline_aspects[date_key] = {
-                'lunar': [a for a in prog_aspects if a['p1'] == 'Moon' or a['p2'] == 'Moon'],
-                'solar': [a for a in prog_aspects if a['p1'] != 'Moon' and a['p2'] != 'Moon'],
-                'transits': transit_aspects
+            self.timeline_aspects_cache[date_key] = {
+                'lunar_prog': [a for a in prog_aspects if 'Moon' in a['name']],
+                'other_prog': [a for a in prog_aspects if 'Moon' not in a['name']],
+                'transits': transit_aspects,
+                'transit_pos': transit_planets
             }
 
     def _process_aspect_events(self):
-        """Processes the daily aspect cache into a list of continuous aspect events."""
+        """Processes the daily aspect cache into a list of continuous aspect events.
+        This version stores the full aspect data to avoid bugs from string splitting."""
         self.aspect_events = []
-        if not self.timeline_aspects: return
+        if not self.timeline_aspects_cache: return
         num_days = self.months_to_display * 30
 
-        for tier in ['lunar', 'solar', 'transits']:
-            active_aspects = {}  # { "Name": { 'start': date, 'orb_readings': [] } }
-
+        for tier in ['lunar_prog', 'other_prog', 'transits']:
+            active_aspects = {}  # { name: {'start': date, 'orb_readings': [], 'data': aspect_dict} }
             for i in range(num_days + 2):
                 current_date = self.start_date + timedelta(days=i - 1)
                 date_key = current_date.strftime('%Y-%m-%d')
-                todays_aspects_list = self.timeline_aspects.get(date_key, {}).get(tier, [])
-                todays_aspects_by_name = {a['name']: a for a in todays_aspects_list}
+                day_data = self.timeline_aspects_cache.get(date_key, {})
+                todays_aspects = {a['name']: a for a in day_data.get(tier, [])}
 
-                # Check for newly started aspects
-                for name, aspect_data in todays_aspects_by_name.items():
+                # Check for newly started or ongoing aspects
+                for name, data in todays_aspects.items():
                     if name not in active_aspects:
-                        active_aspects[name] = {'start': current_date, 'orb_readings': []}
-                    active_aspects[name]['orb_readings'].append((current_date, aspect_data['orb']))
+                        active_aspects[name] = {
+                            'start': current_date,
+                            'orb_readings': [],
+                            'data': data  # Store the whole aspect dictionary
+                        }
+                    active_aspects[name]['orb_readings'].append((current_date, data['orb']))
 
                 # Check for newly ended aspects
-                ended_aspect_names = set(active_aspects.keys()) - set(todays_aspects_by_name.keys())
-                for name in ended_aspect_names:
-                    event_data = active_aspects.pop(name)
-                    # Find date of minimum orb (exact date)
-                    exact_date = min(event_data['orb_readings'], key=lambda x: x[1])[0]
-                    self.aspect_events.append({
-                        'name': name, 'start': event_data['start'], 'end': current_date, 'tier': tier,
-                        'exact_date': exact_date
-                    })
+                ended_names = set(active_aspects.keys()) - set(todays_aspects.keys())
+                for name in ended_names:
+                    event = active_aspects.pop(name)
+                    if not event['orb_readings']: continue
 
-    def _date_to_x(self, date, width, padding):
-        """Converts a date to an x-coordinate on the timeline."""
-        total_days_in_view = self.months_to_display * 30
-        days_from_start = (date - self.start_date).total_seconds() / (24 * 3600)
+                    exact_date = min(event['orb_readings'], key=lambda x: x[1])[0]
 
-        if total_days_in_view == 0: return padding
+                    final_event = {
+                        'name': name,
+                        'start': event['start'],
+                        'end': current_date,
+                        'tier': tier,
+                        'exact_date': exact_date,
+                    }
+                    # Add specific planet names if they exist in the original data
+                    if 'p1' in event['data']:
+                        final_event['p1'] = event['data']['p1']
+                    if 'p2' in event['data']:
+                        final_event['p2'] = event['data']['p2']
 
-        proportion = days_from_start / total_days_in_view
-        return padding + proportion * (width - 2 * padding)
+                    self.aspect_events.append(final_event)
 
-    def _draw_glow_line(self, painter, p1, p2, color):
-        """Draws a line with a neon glow effect."""
-        # Outer glow
-        glow_color = QColor(color)
-        glow_color.setAlpha(80)
-        pen = QPen(glow_color, 5, Qt.PenStyle.SolidLine)
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        painter.setPen(pen)
-        painter.drawLine(p1, p2)
-        # Inner glow
-        glow_color.setAlpha(150)
-        pen.setColor(glow_color)
-        pen.setWidth(3)
-        painter.setPen(pen)
-        painter.drawLine(p1, p2)
-        # Core line
-        pen.setColor(color)
-        pen.setWidth(1)
-        painter.setPen(pen)
-        painter.drawLine(p1, p2)
-
-    def _get_house_for_planet(self, planet_pos):
-        """Finds the house number for a given planetary degree."""
-        if not self.natal_houses: return 0
-        for i in range(11):
-            if self.natal_houses[i] <= planet_pos < self.natal_houses[i+1]:
-                return i + 1
-        # Handle wrap-around for 12th house
-        if self.natal_houses[11] <= planet_pos < 360 or 0 <= planet_pos < self.natal_houses[0]:
-            return 12
-        return 0
-
-    def mouseMoveEvent(self, event):
-        """Handle hover events to show tooltips."""
-        y_pos = event.position().y()
-        # Define the y-ranges for each tier for hit detection
-        tier_y_positions = {
-            'lunar': self.height() / 4,
-            'transits': self.height() / 2,
-            'solar': self.height() * 3 / 4
-        }
-        hover_radius = 10
-
-        for aspect_event in self.aspect_events:
-            tier_y = tier_y_positions.get(aspect_event['tier'])
-            if tier_y and abs(y_pos - tier_y) < hover_radius:
-                # A simple check to see if the mouse is over the line horizontally
-                start_x = self._date_to_x(aspect_event['start'], self.width(), 20)
-                end_x = self._date_to_x(aspect_event['end'], self.width(), 20)
-                if start_x <= event.position().x() <= end_x:
-                    parts = aspect_event['name'].split()
-                    p1_name, p2_name = parts[0], parts[2]
-
-                    p1_raw = self.natal_planets.get(p1_name, 0)
-                    p2_raw = self.natal_planets.get(p2_name, 0)
-
-                    p1_pos = p1_raw[0] if isinstance(p1_raw, tuple) else p1_raw
-                    p2_pos = p2_raw[0] if isinstance(p2_raw, tuple) else p2_raw
-
-                    p1_house = self._get_house_for_planet(p1_pos)
-                    p2_house = self._get_house_for_planet(p2_pos)
-
-                    tooltip_text = (
-                        f"<b>{aspect_event['name']}</b><br>"
-                        f"Exact: {aspect_event['exact_date'].strftime('%d %b %Y')}<br>"
-                        f"<hr>"
-                        f"<b>{p1_name}</b> (Natal House: {p1_house})<br>"
-                        f"<b>{p2_name}</b> (Natal House: {p2_house})"
-                    )
-                    QToolTip.showText(event.globalPosition().toPoint(), tooltip_text, self)
-                    return
-        QToolTip.hideText() # Hide if not hovering over anything
+    # --- Drawing ---
 
     def paintEvent(self, event):
         super().paintEvent(event)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # Define colors and fonts
-        grid_color = QColor("#3DF6FF")
-        text_color = QColor("#94EBFF")
-        year_font = QFont("TT Supermolot Neue Condensed", 14, QFont.Weight.Bold)
-        month_font = QFont("Titillium Web", 12)
-        star_font = QFont("Titillium Web", 16, QFont.Weight.Bold)
+        self.padding = 20
+        self.content_width = self.width() - 2 * self.padding
 
-        tier_colors = {
-            'lunar': QColor("#F9EEFB"), 'transits': QColor("#3DF6FF"), 'solar': QColor("#75439E"),
-        }
-        width, height, padding, header_height, month_label_height = self.width(), self.height(), 20, 60, 30
-        tier_y_positions = {
-            'lunar': height / 4, 'transits': height / 2, 'solar': height * 3 / 4,
-        }
+        self._draw_month_header(painter)
+        self._draw_tier_content(painter, 'lunar_prog', self.colors['lunar'], 120)
+        self._draw_transit_grids(painter, 250)
+        self._draw_tier_content(painter, 'other_prog', self.colors['solar'], 450)
 
-        # Draw Year Header and Month Boxes
-        # ... (This part is unchanged and can be considered complete)
+    def _draw_month_header(self, painter):
+        header_y, box_height = 40, 30
 
-        # Draw the Aspect Lines and Indicators
-        for event in self.aspect_events:
-            start_x = self._date_to_x(event['start'], width, padding)
-            end_x = self._date_to_x(event['end'], width, padding)
-            y_pos = tier_y_positions.get(event['tier'], height / 2)
-            color = tier_colors.get(event['tier'], Qt.GlobalColor.white)
+        # --- Draw Year Box ---
+        year_box_width = 60
+        year_rect = QRectF(self.padding, header_y, year_box_width, box_height)
+        self._draw_glow_rect(painter, year_rect, self.colors['grid'])
+        painter.setFont(self.fonts['year'])
+        painter.setPen(self.colors['text'])
+        painter.drawText(year_rect, Qt.AlignmentFlag.AlignCenter, str(self.start_date.year))
+
+        # --- Draw Month Boxes ---
+        # The number of boxes depends on the timescale, as per the user's sketch
+        num_boxes = 5 # Default for 3 months
+        if self.months_to_display == 6:
+            num_boxes = 8
+        elif self.months_to_display == 12:
+            num_boxes = 14
+
+        month_area_width = self.content_width - year_box_width - 10
+        box_width = month_area_width / num_boxes
+        current_x = self.padding + year_box_width + 10
+
+        last_drawn_month = -1
+        current_year = self.start_date.year
+
+        for i in range(self.months_to_display):
+            month_start_date = self.start_date + timedelta(days=i * 30)
+            month_end_date = self.start_date + timedelta(days=(i + 1) * 30)
+
+            start_x = self._date_to_x(month_start_date)
+            end_x = self._date_to_x(month_end_date)
+
+            month_rect = QRectF(start_x, header_y, end_x - start_x, box_height)
+
+            # Draw the box for the month
+            self._draw_glow_rect(painter, month_rect, self.colors['grid'])
+
+            # Draw the month label inside the box
+            label = month_start_date.strftime("%b").upper()
+            if month_start_date.year != current_year:
+                label = f"{label} {month_start_date.year}"
+                current_year = month_start_date.year
+
+            painter.setFont(self.fonts['month'])
+            painter.setPen(self.colors['text'])
+            painter.drawText(month_rect, Qt.AlignmentFlag.AlignCenter, label)
+
+    def _draw_tier_content(self, painter, tier_name, color, y_pos):
+        events = [e for e in self.aspect_events if e['tier'] == tier_name]
+        for event in events:
+            start_x = self._date_to_x(event['start'])
+            end_x = self._date_to_x(event['end'])
+            exact_x = self._date_to_x(event['exact_date'])
 
             self._draw_glow_line(painter, QPointF(start_x, y_pos), QPointF(end_x, y_pos), color)
+            self._draw_glow_text(painter, QPointF(exact_x - 5, y_pos + 6), "*", self.fonts['star'], self.colors['star'])
 
-            # Draw the exact aspect indicator '*'
-            exact_x = self._date_to_x(event['exact_date'], width, padding)
-            painter.setFont(star_font)
-            star_color = QColor("#FFFF00") # Neon Yellow for the star
-            self._draw_glow_text(painter, QPointF(exact_x - 5, y_pos + 6), "*", star_font, star_color)
+            # Draw label for the aspect
+            painter.setFont(self.fonts['grid'])
+            painter.setPen(self.colors['text'])
+            painter.drawText(QPointF(start_x, y_pos - 8), event['name'])
+
+    def _draw_transit_grids(self, painter, y_start):
+        transit_events = sorted([e for e in self.aspect_events if e['tier'] == 'transits'], key=lambda x: x['exact_date'])
+
+        grid_width, grid_height = 160, 80
+        y_offset = 0
+
+        for event in transit_events:
+            x_pos = self._date_to_x(event['exact_date']) - (grid_width / 2)
+            y_pos = y_start + y_offset
+
+            # Check for overlap and adjust y
+            # This is a simple implementation, could be improved
+            if x_pos < self.padding: x_pos = self.padding
+            if x_pos + grid_width > self.width() - self.padding:
+                x_pos = self.width() - self.padding - grid_width
+
+            # Draw connecting line to timeline
+            painter.setPen(QPen(self.colors['transit'], 1, Qt.PenStyle.DashLine))
+            painter.drawLine(int(x_pos + grid_width / 2), y_pos, int(x_pos + grid_width / 2), y_pos - 20)
+
+            self._draw_single_transit_grid(painter, QRectF(x_pos, y_pos, grid_width, grid_height), event)
+
+            y_offset += grid_height + 20 # Stagger grids vertically
+            if y_offset > 150: y_offset = 0 # Reset y-offset to avoid going too far down
+
+
+    def _draw_single_transit_grid(self, painter, rect, event_data):
+        painter.setPen(self.colors['grid'])
+        painter.setBrush(self.colors['box_bg'])
+        painter.drawRoundedRect(rect, 5, 5)
+
+        # --- Defensive Checks ---
+        date_key = event_data['exact_date'].strftime('%Y-%m-%d')
+        if date_key not in self.timeline_aspects_cache:
+            return # Don't draw if data is missing
+
+        p1 = event_data.get('p1')
+        p2 = event_data.get('p2')
+        if not p1 or not p2:
+            return # Don't draw if planet names are missing
+
+        # --- Content ---
+        painter.setFont(self.fonts['grid'])
+        painter.setPen(self.colors['text'])
+
+        # Line 1: Aspect Name
+        painter.drawText(rect.adjusted(5, 5, -5, -5), Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft, event_data['name'])
+
+        # Line 2: Natal House of Natal Planet
+        natal_house = self._get_natal_house_for_planet(p2)
+        painter.drawText(rect.adjusted(5, 20, -5, -5), Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft, f"Natal House: {natal_house}")
+
+        # Line 3: Transiting House
+        transit_pos = self.timeline_aspects_cache[date_key]['transit_pos'][p1][0]
+        transiting_house = self._get_transiting_house(transit_pos)
+        painter.drawText(rect.adjusted(5, 35, -5, -5), Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft, f"Transiting House: {transiting_house}")
+
+        # Line 4: Ruled Houses
+        ruled_houses = self._get_ruled_houses(p1)
+        painter.drawText(rect.adjusted(5, 50, -5, -5), Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft, f"Rules Houses: {ruled_houses}")
+
+
+    # --- Helpers & Utilities ---
+
+    def _get_natal_house_for_planet(self, planet_name):
+        if not self.natal_houses or planet_name not in self.natal_planets: return "N/A"
+        planet_pos = self.natal_planets[planet_name][0]
+        for i in range(11):
+            if self.natal_houses[i] <= planet_pos < self.natal_houses[i+1]:
+                return str(i + 1)
+        if self.natal_houses[11] <= planet_pos < 360 or 0 <= planet_pos < self.natal_houses[0]:
+            return "12"
+        return "N/A"
+
+    def _get_transiting_house(self, planet_pos):
+        if not self.natal_houses: return "N/A"
+        for i in range(11):
+            if self.natal_houses[i] <= planet_pos < self.natal_houses[i+1]:
+                return str(i + 1)
+        if self.natal_houses[11] <= planet_pos < 360 or 0 <= planet_pos < self.natal_houses[0]:
+            return "12"
+        return "N/A"
+
+    def _get_ruled_houses(self, planet_name):
+        ruled_houses = []
+        if not self.natal_houses: return "N/A"
+        for i, cusp in enumerate(self.natal_houses):
+            ruler = get_house_ruler(cusp)
+            if ruler == planet_name:
+                ruled_houses.append(str(i + 1))
+        return ", ".join(ruled_houses) if ruled_houses else "None"
+
+    def _date_to_x(self, date):
+        total_days = self.months_to_display * 30
+        days_from_start = (date - self.start_date).total_seconds() / (24 * 3600)
+        proportion = days_from_start / total_days
+        return self.padding + proportion * self.content_width
+
+    def _draw_glow_line(self, painter, p1, p2, color):
+        glow_color = QColor(color)
+        glow_color.setAlpha(80)
+        pen = QPen(glow_color, 5, Qt.PenStyle.SolidLine, cap=Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        painter.drawLine(p1, p2)
+        glow_color.setAlpha(150)
+        pen.setColor(glow_color)
+        pen.setWidth(3)
+        painter.setPen(pen)
+        painter.drawLine(p1, p2)
+        pen.setColor(color)
+        pen.setWidth(1)
+        painter.setPen(pen)
+        painter.drawLine(p1, p2)
+
+    def _draw_glow_rect(self, painter, rect, color):
+        """Draws a rectangle with a neon glow effect."""
+        # Outer glow
+        glow_color = QColor(color)
+        glow_color.setAlpha(60)
+        pen = QPen(glow_color, 5, Qt.PenStyle.SolidLine, cap=Qt.PenCapStyle.RoundCap, join=Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRoundedRect(rect, 5, 5)
+        # Inner glow
+        glow_color.setAlpha(120)
+        pen.setColor(glow_color)
+        pen.setWidth(3)
+        painter.setPen(pen)
+        painter.drawRoundedRect(rect, 5, 5)
+        # Core line
+        pen.setColor(color)
+        pen.setWidth(1)
+        painter.setPen(pen)
+        painter.drawRoundedRect(rect, 5, 5)
+
+    def mouseMoveEvent(self, event):
+        """Handle hover events to show tooltips for aspect lines."""
+        y_pos = event.position().y()
+        tier_y_positions = {
+            'lunar_prog': 120,
+            'other_prog': 450,
+        }
+        hover_radius = 10
+
+        for tier, y_val in tier_y_positions.items():
+            if abs(y_pos - y_val) < hover_radius:
+                aspects_in_tier = [e for e in self.aspect_events if e['tier'] == tier]
+                for aspect_event in aspects_in_tier:
+                    start_x = self._date_to_x(aspect_event['start'])
+                    end_x = self._date_to_x(aspect_event['end'])
+
+                    if start_x <= event.position().x() <= end_x:
+                        tooltip_text = (
+                            f"<b>{aspect_event['name']}</b><br>"
+                            f"Exact: {aspect_event['exact_date'].strftime('%d %b %Y')}"
+                        )
+                        QToolTip.showText(event.globalPosition().toPoint(), tooltip_text, self)
+                        return
+
+        QToolTip.hideText() # Hide if not hovering over anything
+        super().mouseMoveEvent(event)
 
     def _draw_glow_text(self, painter, point, text, font, color):
-        """A helper function to draw text with a neon glow effect."""
         painter.setFont(font)
         glow_color = QColor(color)
         glow_color.setAlpha(80)
