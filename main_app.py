@@ -1,6 +1,7 @@
 import sys
 from datetime import datetime, timezone, timedelta
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QVBoxLayout, QHBoxLayout, QLineEdit, QStackedWidget
+from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QPalette, QColor
 from widgets import InfoPanel, StyledButton, ChartDrawingWidget
 from time_map_widget import TimeMapWidget
