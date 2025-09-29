@@ -166,8 +166,14 @@ class TimelineGridWidget(QFrame):
                     parts = aspect_event['name'].split()
                     p1_name, p2_name = parts[0], parts[2]
 
-                    p1_house = self._get_house_for_planet(self.natal_planets.get(p1_name, 0))
-                    p2_house = self._get_house_for_planet(self.natal_planets.get(p2_name, 0))
+                    p1_raw = self.natal_planets.get(p1_name, 0)
+                    p2_raw = self.natal_planets.get(p2_name, 0)
+
+                    p1_pos = p1_raw[0] if isinstance(p1_raw, tuple) else p1_raw
+                    p2_pos = p2_raw[0] if isinstance(p2_raw, tuple) else p2_raw
+
+                    p1_house = self._get_house_for_planet(p1_pos)
+                    p2_house = self._get_house_for_planet(p2_pos)
 
                     tooltip_text = (
                         f"<b>{aspect_event['name']}</b><br>"
