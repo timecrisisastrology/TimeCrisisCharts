@@ -186,12 +186,12 @@ class ChartDrawingWidget(QFrame):
         }
 
         # 1. Draw concentric circles
-        self._draw_glow_path(painter, QPainterPath().addEllipse(center, radii["zodiac_outer"], radii["zodiac_outer"]), neon_pink, 2)
-        self._draw_glow_path(painter, QPainterPath().addEllipse(center, radii["zodiac_inner"], radii["zodiac_inner"]), neon_pink, 2)
-        self._draw_glow_path(painter, QPainterPath().addEllipse(center, radii["inner_wheel"], radii["inner_wheel"]), neon_pink, 2)
-        self._draw_glow_path(painter, QPainterPath().addEllipse(center, radii["aspect_circle"], radii["aspect_circle"]), neon_pink, 2)
+        path = QPainterPath(); path.addEllipse(center, radii["zodiac_outer"], radii["zodiac_outer"]); self._draw_glow_path(painter, path, neon_pink, 2)
+        path = QPainterPath(); path.addEllipse(center, radii["zodiac_inner"], radii["zodiac_inner"]); self._draw_glow_path(painter, path, neon_pink, 2)
+        path = QPainterPath(); path.addEllipse(center, radii["inner_wheel"], radii["inner_wheel"]); self._draw_glow_path(painter, path, neon_pink, 2)
+        path = QPainterPath(); path.addEllipse(center, radii["aspect_circle"], radii["aspect_circle"]); self._draw_glow_path(painter, path, neon_pink, 2)
         if self.outer_planets:
-            self._draw_glow_path(painter, QPainterPath().addEllipse(center, radii["outer_wheel"], radii["outer_wheel"]), neon_pink, 2)
+            path = QPainterPath(); path.addEllipse(center, radii["outer_wheel"], radii["outer_wheel"]); self._draw_glow_path(painter, path, neon_pink, 2)
 
         # 2. Draw zodiac glyphs and dividers
         self._draw_zodiac_glyphs(painter, center, radius, neon_blue, angle_offset)
@@ -310,7 +310,7 @@ class ChartDrawingWidget(QFrame):
             x = center.x() + radius * math.cos(angle_rad)
             y = center.y() + radius * math.sin(angle_rad)
 
-            text = str(house_num)
+            text = str(i + 1)
             font_metrics = QFontMetrics(house_font)
             text_width = font_metrics.horizontalAdvance(text)
             text_height = font_metrics.height()
