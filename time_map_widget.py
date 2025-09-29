@@ -1,12 +1,12 @@
 import sys
 from datetime import datetime, timedelta
-from PyQt6.QtWidgets import QWidget, QLabel, QVBoxLayout, QHBoxLayout, QFrame
-from PyQt6.QtGui import QFont, QColor, QPainter, QPen
-from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QWidget, QLabel, QVBoxLayout, QHBoxLayout, QFrame, QToolTip
+from PyQt6.QtGui import QFont, QColor, QPainter, QPen, QFontMetrics
+from PyQt6.QtCore import Qt, QPointF
 from widgets import StyledButton
 from astro_engine import (
     calculate_transits, calculate_secondary_progressions,
-    calculate_aspects, find_cross_aspects, PLANETS
+    calculate_aspects, find_cross_aspects, PLANETS, get_planet_position
 )
 
 class TimelineGridWidget(QFrame):
@@ -137,11 +137,13 @@ class TimelineGridWidget(QFrame):
     def _get_house_for_planet(self, planet_pos):
         """Finds the house number for a given planetary degree."""
         if not self.natal_houses: return 0
+        # Use the position tuple's first element for longitude
+        longitude = planet_pos[0]
         for i in range(11):
-            if self.natal_houses[i] <= planet_pos < self.natal_houses[i+1]:
+            if self.natal_houses[i] <= longitude < self.natal_houses[i+1]:
                 return i + 1
         # Handle wrap-around for 12th house
-        if self.natal_houses[11] <= planet_pos < 360 or 0 <= planet_pos < self.natal_houses[0]:
+        if self.natal_houses[11] <= longitude < 360 or 0 <= longitude < self.natal_houses[0]:
             return 12
         return 0
 
@@ -166,8 +168,8 @@ class TimelineGridWidget(QFrame):
                     parts = aspect_event['name'].split()
                     p1_name, p2_name = parts[0], parts[2]
 
-                    p1_house = self._get_house_for_planet(self.natal_planets.get(p1_name, 0))
-                    p2_house = self._get_house_for_planet(self.natal_planets.get(p2_name, 0))
+                    p1_house = self._get_house_for_planet(self.natal_planets.get(p1_name, (0,0)))
+                    p2_house = self._get_house_for_planet(self.natal_planets.get(p2_name, (0,0)))
 
                     tooltip_text = (
                         f"<b>{aspect_event['name']}</b><br>"
@@ -200,8 +202,27 @@ class TimelineGridWidget(QFrame):
             'lunar': height / 4, 'transits': height / 2, 'solar': height * 3 / 4,
         }
 
-        # Draw Year Header and Month Boxes
-        # ... (This part is unchanged and can be considered complete)
+        # Draw Year Header
+        painter.setPen(text_color)
+        painter.setFont(year_font)
+        year_str = str(self.start_date.year)
+        painter.drawText(padding, padding, width, header_height, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, year_str)
+
+        # Draw Month Boxes
+        if self.months_to_display > 0:
+            month_width = (width - 2 * padding) / self.months_to_display
+            current_month_date = self.start_date
+            for i in range(self.months_to_display):
+                month_x = padding + i * month_width
+                painter.setPen(grid_color)
+                painter.drawRect(int(month_x), header_height, int(month_width), height - header_height - padding)
+                painter.setPen(text_color)
+                painter.setFont(month_font)
+                month_name = current_month_date.strftime("%B")
+                painter.drawText(int(month_x), header_height, int(month_width), month_label_height, Qt.AlignmentFlag.AlignCenter, month_name)
+                next_month = current_month_date.month % 12 + 1
+                next_year = current_month_date.year + (current_month_date.month // 12)
+                current_month_date = current_month_date.replace(year=next_year, month=next_month, day=1)
 
         # Draw the Aspect Lines and Indicators
         for event in self.aspect_events:
