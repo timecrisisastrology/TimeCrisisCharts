@@ -130,7 +130,7 @@ class TimelineGridWidget(QFrame):
         painter.drawLine(p1, p2)
         # Core line
         pen.setColor(color)
-        pen.setWidth(1.5)
+        pen.setWidth(1)
         painter.setPen(pen)
         painter.drawLine(p1, p2)
 
