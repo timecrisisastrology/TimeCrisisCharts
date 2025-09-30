@@ -85,10 +85,11 @@ class StyledButton(QPushButton):
 
 class ChartDrawingWidget(QFrame):
     """A custom widget for drawing the astrological chart."""
-    def __init__(self):
+    def __init__(self, astro_font_name):
         super().__init__()
         self.setMinimumSize(400, 400) # Ensure the widget has a decent size
         self.setStyleSheet("background-color: transparent; border: none;")
+        self.astro_font_name = astro_font_name # Store the font name
 
         # Chart data - will be populated by set_chart_data
         self.house_cusps = []
@@ -138,7 +139,7 @@ class ChartDrawingWidget(QFrame):
 
     def _draw_zodiac_glyphs(self, painter, center, radius, color, angle_offset):
         # Use the "EnigmaAstrology2" font we loaded
-        font = QFont("EnigmaAstrology2", 35)
+        font = QFont(self.astro_font_name, 35)
         # CRITICAL: Prevent the OS from substituting the glyphs with emoji or other fonts.
         font.setStyleStrategy(QFont.StyleStrategy.NoFontMerging)
         base_radius = radius * 0.925
@@ -259,7 +260,7 @@ class ChartDrawingWidget(QFrame):
     def _draw_planets(self, painter, center, radius, planets, angle_offset):
         """Helper method to draw a wheel of planets."""
         # Use the same font as the zodiac signs for consistency, adjusting size for planets.
-        planet_font = QFont("EnigmaAstrology2", 24)
+        planet_font = QFont(self.astro_font_name, 24)
         # CRITICAL: Prevent the OS from substituting the glyphs with emoji or other fonts.
         planet_font.setStyleStrategy(QFont.StyleStrategy.NoFontMerging)
         for name, position in planets.items():

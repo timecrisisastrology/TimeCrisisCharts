@@ -11,21 +11,34 @@ from astro_engine import (
     calculate_secondary_progressions, calculate_solar_return
 )
 
+# --- Set the verified font name directly. This is more reliable than discovery. ---
+ASTRO_FONT_NAME = "EnigmaAstrology2"
+
 def load_fonts():
-    """Loads all .otf, .woff, and .ttf fonts from the 'fonts' directory."""
+    """
+    Loads all custom fonts from the 'fonts' directory into the application's
+    font database so they can be used by the application.
+    """
     font_dir = "fonts"
-    if not os.path.exists(font_dir):
-        print(f"Font directory '{font_dir}' not found.")
+    astro_font_path = os.path.join(font_dir, "EnigmaAstrology2.ttf")
+
+    if not os.path.exists(astro_font_path):
+        print(f"CRITICAL ERROR: The required astrological font was not found at '{astro_font_path}'")
+        # Set to None so the widget knows there's a problem, though it may default to a system font
+        global ASTRO_FONT_NAME
+        ASTRO_FONT_NAME = None
         return
+
+    # Load all fonts in the directory.
     for font_file in os.listdir(font_dir):
-        if font_file.lower().endswith(('.otf', '.woff', '.ttf')):
+        if font_file.lower().endswith(('.otf', '.ttf')):
             font_path = os.path.join(font_dir, font_file)
+            # Add the font to the application's database.
             font_id = QFontDatabase.addApplicationFont(font_path)
             if font_id == -1:
-                print(f"ERROR: Failed to load font '{font_path}'. This may be because it is not a valid font file or there are permission issues.")
+                print(f"WARNING: Failed to load font '{font_path}'.")
             else:
-                families = QFontDatabase.applicationFontFamilies(font_id)
-                print(f"INFO: Successfully loaded font '{font_path}' with families: {families}")
+                print(f"INFO: Successfully loaded font '{font_path}' into the database.")
 
 class MainWindow(QMainWindow):
     """The main window of the application."""
@@ -137,7 +150,8 @@ class MainWindow(QMainWindow):
     def _create_chart_area(self):
         # --- NEW: Use QStackedWidget to manage views ---
         self.view_stack = QStackedWidget()
-        self.chart_area = ChartDrawingWidget()
+        # Pass the global font name to the drawing widget
+        self.chart_area = ChartDrawingWidget(ASTRO_FONT_NAME)
         self.time_map_area = TimeMapWidget()
         self.view_stack.addWidget(self.chart_area)
         self.view_stack.addWidget(self.time_map_area)
