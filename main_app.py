@@ -1,12 +1,13 @@
 import sys
 import os
+import json
 from datetime import datetime, timezone, timedelta
 
 # Set the Qt platform plugin to 'offscreen' to allow the application to run
 # in a headless environment for testing and screenshot generation.
-# os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 
-from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QVBoxLayout, QHBoxLayout, QLineEdit, QStackedWidget
+from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QVBoxLayout, QHBoxLayout, QLineEdit, QStackedWidget, QFileDialog
 from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QPalette, QColor, QFontDatabase
 from widgets import InfoPanel, StyledButton, ChartDrawingWidget
@@ -95,13 +96,41 @@ class MainWindow(QMainWindow):
         self.update_chart() # Initial chart display
 
     def _create_info_panels(self):
-        natal_data = {
-            "Name": "Jane Doe", "Birth Date": "15 May 1989", "Birth Time": "08:30 AM",
-            "Location": "London, UK", "Coords": f"{self.london_lat:.2f}° N, {self.london_lon:.2f}° W"
-        }
-        birth_info_panel = InfoPanel("Natal Chart Data", natal_data)
+        # --- Natal Chart Input Fields ---
+        self.name_input = QLineEdit("Jane Doe")
+        self.birth_date_input = QLineEdit("1989-05-15")
+        self.birth_time_input = QLineEdit("08:30")
+        self.birth_lat_input = QLineEdit(str(self.london_lat))
+        self.birth_lon_input = QLineEdit(str(self.london_lon))
 
-        # --- NEW: Relocation input fields ---
+        natal_data = {
+            "Name": self.name_input,
+            "Birth Date (YYYY-MM-DD)": self.birth_date_input,
+            "Birth Time (HH:MM)": self.birth_time_input,
+            "Latitude": self.birth_lat_input,
+            "Longitude": self.birth_lon_input,
+        }
+
+        # This will be a new VBox layout to hold the panel and the button
+        birth_info_container = QWidget()
+        birth_info_layout = QVBoxLayout(birth_info_container)
+        birth_info_layout.setContentsMargins(0,0,0,0)
+
+        birth_info_panel = InfoPanel("Natal Chart Data", natal_data)
+        self.btn_generate_chart = StyledButton("Generate Chart")
+
+        # --- File Operations Buttons ---
+        file_ops_layout = QHBoxLayout()
+        self.btn_save_chart = StyledButton("Save Chart")
+        self.btn_load_chart = StyledButton("Load Chart")
+        file_ops_layout.addWidget(self.btn_save_chart)
+        file_ops_layout.addWidget(self.btn_load_chart)
+
+        birth_info_layout.addWidget(birth_info_panel)
+        birth_info_layout.addWidget(self.btn_generate_chart)
+        birth_info_layout.addLayout(file_ops_layout)
+
+        # --- Dynamic Chart Controls ---
         self.lat_input = QLineEdit(str(self.reloc_lat))
         self.lon_input = QLineEdit(str(self.reloc_lon))
         self.date_label = QLabel(self.current_date.strftime("%d %b %Y, %H:%M:%S %Z"))
@@ -112,7 +141,7 @@ class MainWindow(QMainWindow):
             "Reloc Lon": self.lon_input,
         }
         self.transit_info_panel = InfoPanel("Dynamic Chart Controls", transit_data)
-        self.grid_layout.addWidget(birth_info_panel, 0, 0)
+        self.grid_layout.addWidget(birth_info_container, 0, 0)
         self.grid_layout.addWidget(self.transit_info_panel, 0, 1)
 
     def _create_toolbar(self):
@@ -185,6 +214,9 @@ class MainWindow(QMainWindow):
         self.btn_time_map.clicked.connect(self.show_time_map_view)
         self.lat_input.editingFinished.connect(self.handle_relocation)
         self.lon_input.editingFinished.connect(self.handle_relocation)
+        self.btn_generate_chart.clicked.connect(self.handle_generate_chart)
+        self.btn_save_chart.clicked.connect(self.handle_save_chart)
+        self.btn_load_chart.clicked.connect(self.handle_load_chart)
 
     def set_chart_type(self, chart_type):
         self.current_chart_type = chart_type
@@ -209,6 +241,90 @@ class MainWindow(QMainWindow):
         except ValueError:
             # Handle invalid input gracefully if needed
             print("Invalid coordinates entered.")
+
+    def handle_generate_chart(self):
+        """
+        Reads natal data from the input fields, calculates the new chart,
+        and updates the application state and display.
+        """
+        try:
+            # 1. Parse the input values
+            name = self.name_input.text()
+            date_str = self.birth_date_input.text()
+            time_str = self.birth_time_input.text()
+            lat = float(self.birth_lat_input.text())
+            lon = float(self.birth_lon_input.text())
+
+            # 2. Combine date and time and create a timezone-aware datetime object
+            birth_dt_str = f"{date_str} {time_str}"
+            # This assumes the input time is UTC. A more advanced implementation
+            # would need a timezone input field.
+            birth_datetime = datetime.strptime(birth_dt_str, '%Y-%m-%d %H:%M').replace(tzinfo=timezone.utc)
+
+            # 3. Recalculate the natal chart and aspects
+            self.natal_planets, self.natal_houses = calculate_natal_chart(birth_datetime, lat, lon)
+            self.natal_aspects = calculate_aspects(self.natal_planets, 7) # Using a default orb of 7
+
+            # Store the new birth date for use in other calculations like progressions
+            self.sample_birth_date = birth_datetime
+
+            # 4. Update the chart display
+            print(f"Successfully generated new chart for {name}.")
+            self.update_chart()
+
+        except ValueError as e:
+            # Handle cases where date/time format is wrong or lat/lon are not numbers
+            print(f"Error parsing input data: {e}")
+        except Exception as e:
+            # Catch any other unexpected errors during chart generation
+            print(f"An unexpected error occurred: {e}")
+
+    def handle_save_chart(self):
+        """
+        Opens a file dialog to save the current natal chart data to a JSON file.
+        """
+        file_name, _ = QFileDialog.getSaveFileName(self, "Save Chart", "", "JSON Files (*.json);;All Files (*)")
+        if file_name:
+            chart_data = {
+                "name": self.name_input.text(),
+                "birth_date": self.birth_date_input.text(),
+                "birth_time": self.birth_time_input.text(),
+                "latitude": self.birth_lat_input.text(),
+                "longitude": self.birth_lon_input.text()
+            }
+            try:
+                with open(file_name, 'w') as f:
+                    json.dump(chart_data, f, indent=4)
+                print(f"Chart data saved to {file_name}")
+            except IOError as e:
+                print(f"Error saving file: {e}")
+
+    def handle_load_chart(self):
+        """
+        Opens a file dialog to load natal chart data from a JSON file,
+        populates the fields, and generates the chart.
+        """
+        file_name, _ = QFileDialog.getOpenFileName(self, "Load Chart", "", "JSON Files (*.json);;All Files (*)")
+        if file_name:
+            try:
+                with open(file_name, 'r') as f:
+                    chart_data = json.load(f)
+
+                # Populate the input fields with the loaded data
+                self.name_input.setText(chart_data.get("name", ""))
+                self.birth_date_input.setText(chart_data.get("birth_date", ""))
+                self.birth_time_input.setText(chart_data.get("birth_time", ""))
+                self.birth_lat_input.setText(chart_data.get("latitude", ""))
+                self.birth_lon_input.setText(chart_data.get("longitude", ""))
+
+                # Automatically generate the chart with the loaded data
+                self.handle_generate_chart()
+                print(f"Chart data loaded from {file_name}")
+
+            except (IOError, json.JSONDecodeError) as e:
+                print(f"Error loading file: {e}")
+            except Exception as e:
+                print(f"An unexpected error occurred during chart loading: {e}")
 
     def update_chart(self):
         """The central method to recalculate and redraw the chart based on current state."""
@@ -264,6 +380,6 @@ if __name__ == "__main__":
 
     # Use a QTimer to save a screenshot after a short delay and then exit.
     # This is for automated verification in a headless environment.
-    # QTimer.singleShot(1500, window.save_screenshot_and_exit) # 1.5 second delay
+    QTimer.singleShot(1500, window.save_screenshot_and_exit) # 1.5 second delay
 
     sys.exit(app.exec())
