@@ -2,16 +2,6 @@ import sys
 import os
 from datetime import datetime, timezone, timedelta
 
-# --- BEGIN FIX: Resolve PyQt6 font loading issue ---
-# On some systems, PyQt6 cannot find the default system font directory.
-# This is a known issue, and the recommended solution is to explicitly
-# set the QT_FONT_DIR environment variable to a path containing valid
-# TrueType fonts. Here, we point it to our application's own font directory.
-# This must be done *before* QApplication is instantiated.
-font_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fonts')
-os.environ['QT_FONT_DIR'] = font_dir
-# --- END FIX ---
-
 # Set the Qt platform plugin to 'offscreen' to allow the application to run
 # in a headless environment for testing and screenshot generation.
 os.environ['QT_QPA_PLATFORM'] = 'offscreen'
@@ -274,6 +264,6 @@ if __name__ == "__main__":
 
     # Use a QTimer to save a screenshot after a short delay and then exit.
     # This is for automated verification in a headless environment.
-    # QTimer.singleShot(1500, window.save_screenshot_and_exit) # 1.5 second delay
+    QTimer.singleShot(1500, window.save_screenshot_and_exit) # 1.5 second delay
 
     sys.exit(app.exec())
