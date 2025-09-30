@@ -2,6 +2,16 @@ import sys
 import os
 from datetime import datetime, timezone, timedelta
 
+# --- BEGIN FIX: Resolve PyQt6 font loading issue ---
+# On some systems, PyQt6 cannot find the default system font directory.
+# This is a known issue, and the recommended solution is to explicitly
+# set the QT_FONT_DIR environment variable to a path containing valid
+# TrueType fonts. Here, we point it to our application's own font directory.
+# This must be done *before* QApplication is instantiated.
+font_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fonts')
+os.environ['QT_FONT_DIR'] = font_dir
+# --- END FIX ---
+
 # Set the Qt platform plugin to 'offscreen' to allow the application to run
 # in a headless environment for testing and screenshot generation.
 os.environ['QT_QPA_PLATFORM'] = 'offscreen'
@@ -21,9 +31,9 @@ ASTRO_FONT_NAME = None
 
 def load_fonts():
     """
-    Loads all fonts from the 'fonts' directory and directly sets the
-    hardcoded name for the astrological font. This is more reliable than
-    discovering the family name programmatically.
+    Loads all fonts from the 'fonts' directory. For the astrological font,
+    it programmatically discovers the family name to ensure reliability,
+    as hardcoded names can be brittle.
     """
     global ASTRO_FONT_NAME
     font_dir = "fonts"
@@ -33,9 +43,11 @@ def load_fonts():
     font_id = QFontDatabase.addApplicationFont(astro_font_path)
 
     if font_id != -1:
-        # Instead of discovering the name, we use the known, correct family name.
-        ASTRO_FONT_NAME = "EnigmaAstrology2"
-        print(f"SUCCESS: Astrological font '{astro_font_path}' loaded. Using hardcoded family name: '{ASTRO_FONT_NAME}'")
+        # Programmatically get the family name from the font file itself.
+        # This is the most reliable way to ensure the correct font is used.
+        family = QFontDatabase.applicationFontFamilies(font_id)[0]
+        ASTRO_FONT_NAME = family
+        print(f"SUCCESS: Astrological font '{astro_font_path}' loaded. Discovered family name: '{ASTRO_FONT_NAME}'")
     else:
         print(f"CRITICAL ERROR: Failed to load the required astrological font from '{astro_font_path}'.")
         # As a fallback, try to use a generic font, although glyphs will be missing.
