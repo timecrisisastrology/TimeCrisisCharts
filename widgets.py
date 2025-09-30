@@ -109,18 +109,18 @@ class ChartDrawingWidget(QFrame):
 
     def _setup_glyph_data(self):
         """Initializes all glyph and color data for rendering, ensuring correct color scheme."""
-        # --- Zodiac Sign Glyphs (using Unicode) ---
+        # --- Zodiac Sign Glyphs (using the correct ASCII mapping) ---
         self.zodiac_glyphs = {
-            'Aries': '♈', 'Taurus': '♉', 'Gemini': '♊', 'Cancer': '♋',
-            'Leo': '♌', 'Virgo': '♍', 'Libra': '♎', 'Scorpio': '♏',
-            'Sagittarius': '♐', 'Capricorn': '♑', 'Aquarius': '♒', 'Pisces': '♓'
+            'Aries': 'A', 'Taurus': 'B', 'Gemini': 'C', 'Cancer': 'D',
+            'Leo': 'E', 'Virgo': 'F', 'Libra': 'G', 'Scorpio': 'H',
+            'Sagittarius': 'I', 'Capricorn': 'J', 'Aquarius': 'K', 'Pisces': 'L'
         }
         self.zodiac_names = list(self.zodiac_glyphs.keys())
 
-        # --- Planet Glyphs (using Unicode) ---
+        # --- Planet Glyphs (using the correct ASCII mapping) ---
         self.planet_glyphs = {
-            'Sun': '☉', 'Moon': '☽', 'Mercury': '☿', 'Venus': '♀', 'Mars': '♂',
-            'Jupiter': '♃', 'Saturn': '♄', 'Uranus': '♅', 'Neptune': '♆', 'Pluto': '♇'
+            'Sun': 'a', 'Moon': 'b', 'Mercury': 'c', 'Venus': 'd', 'Mars': 'e',
+            'Jupiter': 'f', 'Saturn': 'g', 'Uranus': 'h', 'Neptune': 'i', 'Pluto': 'j'
         }
 
         # --- Neon Color Definitions ---

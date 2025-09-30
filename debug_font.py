@@ -3,6 +3,9 @@ import os
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QFontDatabase
 
+# Set the Qt platform plugin to 'offscreen' to avoid display errors in headless environments.
+os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+
 def debug_font_loading():
     """
     A diagnostic script to verify the loading of the custom astrological font
