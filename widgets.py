@@ -1,7 +1,6 @@
 import sys
 import math
 from PyQt6.QtWidgets import QWidget, QLabel, QFormLayout, QVBoxLayout, QFrame, QPushButton, QLineEdit
-# from svg.path import parse_path, Move, Line, Arc, Close, CubicBezier, QuadraticBezier # No longer needed
 from PyQt6.QtGui import QFont, QPainter, QPen, QColor, QBrush, QFontMetrics, QPainterPath, QTransform
 from PyQt6.QtCore import Qt, QPointF, QRectF
 
@@ -108,7 +107,7 @@ class ChartDrawingWidget(QFrame):
         self.update()
 
     def _setup_glyph_data(self):
-        """Initializes all glyph and color data for rendering."""
+        """Initializes all glyph and color data for rendering, ensuring correct color scheme."""
         # --- Zodiac Sign Glyphs (using Unicode) ---
         self.zodiac_glyphs = {
             'Aries': '♈', 'Taurus': '♉', 'Gemini': '♊', 'Cancer': '♋',
@@ -124,29 +123,24 @@ class ChartDrawingWidget(QFrame):
         }
 
         # --- Neon Color Definitions ---
-        # Fire Planets: Neon Pink
-        neon_pink = QColor("#FF01F9")
-        # Water Planets: Neon Blue
-        neon_blue = QColor("#3DF6FF")
-        # Air Planets: Neon Yellow
-        neon_yellow = QColor("#FFFF00")
-        # Earth Planets: Neon Green
-        neon_green = QColor("#39FF14")
+        neon_pink = QColor("#FF01F9")   # Fire
+        neon_blue = QColor("#3DF6FF")   # Water
+        neon_yellow = QColor("#FFFF00") # Air
+        neon_green = QColor("#39FF14")  # Earth
 
+        # CRITICAL: This mapping implements the user's requested color scheme.
         self.planet_colors = {
-            # Fire
-            'Sun': neon_pink, 'Mars': neon_pink, 'Jupiter': neon_pink,
-            # Water
-            'Moon': neon_blue, 'Neptune': neon_blue, 'Pluto': neon_blue,
-            # Air
-            'Mercury': neon_yellow, 'Uranus': neon_yellow,
-            # Earth
-            'Venus': neon_green, 'Saturn': neon_green,
+            'Sun': neon_pink, 'Mars': neon_pink, 'Jupiter': neon_pink,     # Fire
+            'Moon': neon_blue, 'Neptune': neon_blue, 'Pluto': neon_blue,   # Water
+            'Mercury': neon_yellow, 'Uranus': neon_yellow,                 # Air
+            'Venus': neon_green, 'Saturn': neon_green,                     # Earth
         }
 
     def _draw_zodiac_glyphs(self, painter, center, radius, color, angle_offset):
         # Use the "Zodiac Signs" font we loaded
         font = QFont("Zodiac Signs", 35)
+        # CRITICAL: Prevent the OS from substituting the glyphs with emoji or other fonts.
+        font.setStyleStrategy(QFont.StyleStrategy.NoFontMerging)
         base_radius = radius * 0.925
 
         for i, name in enumerate(self.zodiac_names):
@@ -266,6 +260,8 @@ class ChartDrawingWidget(QFrame):
         """Helper method to draw a wheel of planets."""
         # Use the same font as the zodiac signs for consistency, adjusting size for planets.
         planet_font = QFont("Zodiac Signs", 24)
+        # CRITICAL: Prevent the OS from substituting the glyphs with emoji or other fonts.
+        planet_font.setStyleStrategy(QFont.StyleStrategy.NoFontMerging)
         for name, position in planets.items():
             angle_rad = math.radians(position[0] + angle_offset)
             x = center.x() + radius * math.cos(angle_rad)
