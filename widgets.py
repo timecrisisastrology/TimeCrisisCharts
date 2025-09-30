@@ -3,6 +3,7 @@ import math
 from PyQt6.QtWidgets import QWidget, QLabel, QFormLayout, QVBoxLayout, QFrame, QPushButton, QLineEdit
 from PyQt6.QtGui import QFont, QPainter, QPen, QColor, QBrush, QFontMetrics, QPainterPath, QTransform
 from PyQt6.QtCore import Qt, QPointF, QRectF
+from astro_engine import format_longitude
 
 class InfoPanel(QWidget):
     """A custom, styled panel for displaying astrological data. Can accept QWidgets."""
@@ -271,26 +272,43 @@ class ChartDrawingWidget(QFrame):
                     painter.drawLine(QPointF(p1_x, p1_y), QPointF(p2_x, p2_y))
 
     def _draw_planets(self, painter, center, radius, planets, angle_offset):
-        """Helper method to draw a wheel of planets."""
-        # Use the astro_font_name passed during initialization.
+        """Helper method to draw a wheel of planets with their positions."""
         planet_font = QFont(self.astro_font_name, 24)
-        # CRITICAL: Prevent the OS from substituting the glyphs with emoji or other fonts.
         planet_font.setStyleStrategy(QFont.StyleStrategy.NoFontMerging)
-        for name, position in planets.items():
-            angle_rad = math.radians(position[0] + angle_offset)
-            x = center.x() + radius * math.cos(angle_rad)
-            y = center.y() + radius * math.sin(angle_rad)
+        label_font = QFont("Titillium Web", 8)
+
+        for name, position_data in planets.items():
+            longitude = position_data[0]
+            angle_rad = math.radians(longitude + angle_offset)
+
+            # --- Draw Planet Glyph ---
+            glyph_x = center.x() + radius * math.cos(angle_rad)
+            glyph_y = center.y() + radius * math.sin(angle_rad)
             glyph = self.planet_glyphs.get(name, '?')
+            planet_color = self.planet_colors.get(name, QColor("white"))
+
+            painter.save()
+            painter.translate(glyph_x, glyph_y)
+            painter.scale(1, -1) # Flip text back to be upright
             font_metrics = QFontMetrics(planet_font)
             text_width = font_metrics.horizontalAdvance(glyph)
             text_height = font_metrics.height()
-            point = QPointF(x - text_width / 2, y + text_height / 4)
-            planet_color = self.planet_colors.get(name, QColor("white"))
-            # Since the whole canvas is flipped, we need to flip the text back
+            self._draw_glow_text(painter, QPointF(-text_width / 2, text_height / 4), glyph, planet_font, planet_color)
+            painter.restore()
+
+            # --- Draw Position Label ---
+            label_radius = radius * 1.15 # Place label slightly outside the glyph
+            label_x = center.x() + label_radius * math.cos(angle_rad)
+            label_y = center.y() + label_radius * math.sin(angle_rad)
+            label_text = format_longitude(longitude)
+
             painter.save()
-            painter.translate(point)
-            painter.scale(1, -1)
-            self._draw_glow_text(painter, QPointF(-text_width / 2, text_height/4), glyph, planet_font, planet_color)
+            painter.translate(label_x, label_y)
+            painter.scale(1, -1) # Flip text back to be upright
+            font_metrics = QFontMetrics(label_font)
+            text_width = font_metrics.horizontalAdvance(label_text)
+            text_height = font_metrics.height()
+            self._draw_glow_text(painter, QPointF(-text_width / 2, text_height / 4), label_text, label_font, planet_color)
             painter.restore()
 
     def _draw_cusp_labels(self, painter, center, radius, color, angle_offset):

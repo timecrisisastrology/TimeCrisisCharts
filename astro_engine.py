@@ -182,19 +182,44 @@ def get_zodiac_sign(degree):
              "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"]
     return signs[int(degree / 30)]
 
+def get_zodiac_sign_short(degree):
+    """Returns the 3-letter abbreviation for a zodiac sign."""
+    return get_zodiac_sign(degree)[:3]
+
+def format_longitude(longitude):
+    """Formats a decimal degree into a string like '15° Tau 33''."""
+    sign = get_zodiac_sign_short(longitude)
+    deg_in_sign = int(longitude % 30)
+    minutes = int((longitude - int(longitude)) * 60)
+    return f"{deg_in_sign}° {sign} {minutes}'"
+
 def get_house_ruler(house_cusp_degree):
-    """Returns the ruling planet for a house based on its cusp sign."""
+    """Returns the ruling planet for a house based on its cusp sign using traditional rulers."""
     sign = get_zodiac_sign(house_cusp_degree)
-    # Traditional rulers
     rulership = {
-        "Aries": "Mars", "Taurus": "Venus", "Gemini": "Mercury",
-        "Cancer": "Moon", "Leo": "Sun", "Virgo": "Mercury",
-        "Libra": "Venus", "Scorpio": "Mars", # Traditional: Mars, Modern: Pluto
-        "Sagittarius": "Jupiter", "Capricorn": "Saturn",
-        "Aquarius": "Saturn", # Traditional: Saturn, Modern: Uranus
-        "Pisces": "Jupiter" # Traditional: Jupiter, Modern: Neptune
+        "Aries": "Mars", "Taurus": "Venus", "Gemini": "Mercury", "Cancer": "Moon",
+        "Leo": "Sun", "Virgo": "Mercury", "Libra": "Venus", "Scorpio": "Mars",
+        "Sagittarius": "Jupiter", "Capricorn": "Saturn", "Aquarius": "Saturn", "Pisces": "Jupiter"
     }
     return rulership.get(sign, "Unknown")
+
+def get_ruled_houses_for_planet(planet_name, natal_house_cusps):
+    """
+    Finds which natal houses are ruled by a specific planet based on traditional rulerships.
+    For example, if the 7th house cusp is in Aries, Mars rules the 7th house.
+    A planet can rule multiple houses.
+    """
+    ruled_houses = []
+    if not natal_house_cusps:
+        return []
+    for i, cusp_degree in enumerate(natal_house_cusps):
+        # We only check the first 12 houses
+        if i >= 12:
+            break
+        ruler = get_house_ruler(cusp_degree)
+        if ruler == planet_name:
+            ruled_houses.append(str(i + 1))
+    return ruled_houses
 
 def calculate_lunar_phase(sun_pos, moon_pos):
     """Calculates the name and angle of the lunar phase."""
