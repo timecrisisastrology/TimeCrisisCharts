@@ -1,6 +1,11 @@
 import sys
 import os
 from datetime import datetime, timezone, timedelta
+
+# Set the Qt platform plugin to 'offscreen' to allow the application to run
+# in a headless environment for testing and screenshot generation.
+os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QVBoxLayout, QHBoxLayout, QLineEdit, QStackedWidget
 from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QPalette, QColor, QFontDatabase
@@ -229,10 +234,34 @@ class MainWindow(QMainWindow):
                 self.natal_planets, self.natal_houses, [], outer_planets=sr_planets, display_houses=sr_houses
             )
 
+    def save_screenshot_and_exit(self):
+        """Saves a screenshot of the window and closes the application."""
+        # Ensure the directory exists
+        if not os.path.exists("jules-scratch/verification"):
+            os.makedirs("jules-scratch/verification")
+
+        screenshot_path = "jules-scratch/verification/verification.png"
+        print(f"Attempting to save screenshot to {screenshot_path}...")
+        screenshot = self.grab()
+        success = screenshot.save(screenshot_path, "png")
+
+        if success:
+            print(f"SUCCESS: Screenshot saved to {screenshot_path}.")
+        else:
+            print(f"CRITICAL ERROR: Failed to save screenshot to {screenshot_path}.")
+
+        print("Exiting application.")
+        QApplication.quit()
+
 # --- Main execution block ---
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     load_fonts() # Load all custom fonts
     window = MainWindow()
     window.show()
+
+    # Use a QTimer to save a screenshot after a short delay and then exit.
+    # This is for automated verification in a headless environment.
+    QTimer.singleShot(1500, window.save_screenshot_and_exit) # 1.5 second delay
+
     sys.exit(app.exec())
