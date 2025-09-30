@@ -1,14 +1,31 @@
 import sys
+import os
 from datetime import datetime, timezone, timedelta
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QVBoxLayout, QHBoxLayout, QLineEdit, QStackedWidget
 from PyQt6.QtCore import QTimer
-from PyQt6.QtGui import QPalette, QColor
+from PyQt6.QtGui import QPalette, QColor, QFontDatabase
 from widgets import InfoPanel, StyledButton, ChartDrawingWidget
 from time_map_widget import TimeMapWidget
 from astro_engine import (
     calculate_natal_chart, calculate_aspects, calculate_transits,
     calculate_secondary_progressions, calculate_solar_return
 )
+
+def load_fonts():
+    """Loads all .otf, .woff, and .ttf fonts from the 'fonts' directory."""
+    font_dir = "fonts"
+    if not os.path.exists(font_dir):
+        print(f"Font directory '{font_dir}' not found.")
+        return
+    for font_file in os.listdir(font_dir):
+        if font_file.lower().endswith(('.otf', '.woff', '.ttf')):
+            font_path = os.path.join(font_dir, font_file)
+            font_id = QFontDatabase.addApplicationFont(font_path)
+            if font_id == -1:
+                print(f"Warning: Failed to load font '{font_path}'. May not be a valid font file.")
+            else:
+                families = QFontDatabase.applicationFontFamilies(font_id)
+                # print(f"Successfully loaded font '{font_path}' with families: {families}")
 
 class MainWindow(QMainWindow):
     """The main window of the application."""
@@ -196,6 +213,7 @@ class MainWindow(QMainWindow):
 # --- Main execution block ---
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    load_fonts() # Load all custom fonts
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
