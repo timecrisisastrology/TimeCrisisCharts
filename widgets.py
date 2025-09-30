@@ -96,7 +96,6 @@ class ChartDrawingWidget(QFrame):
         self.planets = {} # Inner wheel planets
         self.outer_planets = None # Outer wheel planets
         self.aspects = []
-        self.zodiac_symbols = ["♈", "♉", "♊", "♋", "♌", "♍", "♎", "♏", "♐", "♑", "♒", "♓"]
         self._define_zodiac_paths()
 
         # --- Planet & Color Definitions ---
@@ -121,57 +120,38 @@ class ChartDrawingWidget(QFrame):
 
     def _define_zodiac_paths(self):
         """
-        Defines the QPainterPath for each zodiac sign based on the examples provided.
+        Defines the QPainterPath for each zodiac sign using SVG path data.
         Paths are designed on a 100x100 canvas for consistent scaling.
-        Reference images: Chart_example1.PNG, Chart_example2.PNG, Chart_example3.PNG
         """
-        self.zodiac_paths = {
-            "Aries": QPainterPath(), "Taurus": QPainterPath(), "Gemini": QPainterPath(),
-            "Cancer": QPainterPath(), "Leo": QPainterPath(), "Virgo": QPainterPath(),
-            "Libra": QPainterPath(), "Scorpio": QPainterPath(), "Sagittarius": QPainterPath(),
-            "Capricorn": QPainterPath(), "Aquarius": QPainterPath(), "Pisces": QPainterPath()
+        # SVG path data provided by the user.
+        svg_paths = {
+            "Aries": "M30 60 Q40 30 50 40 Q60 30 70 60",
+            "Taurus": "M 70 70 A 20 20 0 1 1 30 70 A 20 20 0 1 1 70 70 Z M 25 50 A 25 25 0 0 1 75 50",
+            "Gemini": "M 35 25 V 75 M 65 25 V 75 M 30 30 H 70 M 30 70 H 70",
+            "Cancer": "M 30 50 A 20 20 0 1 0 50 30 A 20 20 0 0 1 70 50 M 30 50 A 20 20 0 1 1 50 70 A 20 20 0 0 0 70 50",
+            "Leo": "M 50 65 A 15 15 0 1 0 50 35 A 15 15 0 0 0 50 65 Z M 65 50 Q 75 40 80 20 L 75 15 Q 60 10 50 20",
+            "Virgo": "M 30 25 V 75 Q 30 70 40 70 Q 50 70 50 50 Q 50 30 60 30 Q 70 30 70 25 V 60 A 15 15 0 1 1 55 60",
+            "Libra": "M 30 40 H 70 M 30 60 H 70 M 30 40 Q 50 20 70 40",
+            "Scorpio": "M 30 25 V 70 Q 30 65 40 65 Q 50 65 50 45 Q 50 25 60 25 Q 70 25 70 20 V 55 Q 70 65 80 60 L 85 70",
+            "Sagittarius": "M 30 70 L 70 30 M 60 30 L 70 30 L 65 40 M 30 70 L 30 60 M 30 70 L 40 65",
+            "Capricorn": "M 30 70 V 30 L 70 30 V 55 Q 70 65 60 70 A 15 15 0 1 1 50 70",
+            "Aquarius": "M 20 40 L 30 50 L 40 30 L 50 50 L 60 30 L 70 50 L 80 40 M 20 60 L 30 70 L 40 50 L 50 70 L 60 50 L 70 70 L 80 60",
+            "Pisces": "M 30 50 H 70 M 50 30 A 20 20 0 0 1 50 70 M 50 30 A 20 20 0 0 0 50 70"
         }
 
-        # Aries (The Ram): Two arcs curving outwards from a central stem.
-        p = self.zodiac_paths["Aries"]; p.moveTo(50, 90); p.lineTo(50, 10); p.moveTo(50, 30); p.quadTo(0, 20, 20, 50); p.moveTo(50, 30); p.quadTo(100, 20, 80, 50)
-
-        # Taurus (The Bull): A circle with horns pointing up.
-        p = self.zodiac_paths["Taurus"]; p.addEllipse(25, 45, 50, 50); p.moveTo(25, 55); p.quadTo(50, 5, 75, 55)
-
-        # Gemini (The Twins): Two parallel vertical lines capped at both ends.
-        p = self.zodiac_paths["Gemini"]; p.moveTo(30, 85); p.lineTo(30, 15); p.moveTo(70, 85); p.lineTo(70, 15); p.moveTo(20, 20); p.lineTo(80, 20); p.moveTo(20, 80); p.lineTo(80, 80)
-
-        # Cancer (The Crab): Two circles with tails, resembling a '69' sideways.
-        p = self.zodiac_paths["Cancer"]; p.addEllipse(15, 50, 30, 30); p.moveTo(45, 65); p.quadTo(60, 85, 80, 75); p.addEllipse(55, 20, 30, 30); p.moveTo(55, 35); p.quadTo(40, 15, 20, 25)
-
-        # Leo (The Lion): A circle with a more stylized, looping tail.
-        p = self.zodiac_paths["Leo"]; p.addEllipse(20, 15, 45, 45); p.moveTo(65, 37.5); p.quadTo(80, 65, 60, 85); p.quadTo(40, 100, 35, 75)
-
-        # Virgo (The Maiden): An 'M' shape with a loop on the final stroke.
-        p = self.zodiac_paths["Virgo"]; p.moveTo(15, 85); p.lineTo(15, 15); p.quadTo(30, 30, 45, 15); p.lineTo(45, 85); p.moveTo(45, 40); p.quadTo(60, 25, 75, 15); p.lineTo(75, 85); p.quadTo(95, 70, 65, 60); p.lineTo(65, 85)
-
-        # Libra (The Scales): A line with a semi-circle hump, above another line.
-        p = self.zodiac_paths["Libra"]; p.moveTo(10, 80); p.lineTo(90, 80); p.moveTo(10, 65); p.lineTo(90, 65); p.moveTo(30, 65); p.quadTo(50, 40, 70, 65)
-
-        # Scorpio (The Scorpion): An 'M' shape with a stinger on the final stroke.
-        p = self.zodiac_paths["Scorpio"]; p.moveTo(15, 85); p.lineTo(15, 15); p.quadTo(30, 30, 45, 15); p.lineTo(45, 85); p.moveTo(45, 40); p.quadTo(60, 25, 75, 15); p.lineTo(75, 85); p.moveTo(75, 80); p.lineTo(95, 60)
-
-        # Sagittarius (The Archer): An arrow pointing up and to the right.
-        p = self.zodiac_paths["Sagittarius"]; p.moveTo(15, 85); p.lineTo(85, 15); p.moveTo(65, 15); p.lineTo(85, 15); p.lineTo(85, 35); p.moveTo(25, 55); p.lineTo(55, 85)
-
-        # Capricorn (The Sea-Goat): A stylized 'V' shape with a looping tail.
-        p = self.zodiac_paths["Capricorn"]; p.moveTo(15, 15); p.lineTo(15, 45); p.lineTo(40, 75); p.lineTo(65, 45); p.moveTo(40, 75); p.quadTo(85, 95, 80, 50); p.quadTo(75, 15, 50, 30)
-
-        # Aquarius (The Water Bearer): Three parallel jagged lines.
-        p = self.zodiac_paths["Aquarius"]; p.moveTo(10, 25); p.lineTo(30, 45); p.lineTo(50, 25); p.lineTo(70, 45); p.lineTo(90, 25); p.moveTo(10, 55); p.lineTo(30, 75); p.lineTo(50, 55); p.lineTo(70, 75); p.lineTo(90, 55); p.moveTo(10, 85); p.lineTo(30, 105); p.lineTo(50, 85); p.lineTo(70, 105); p.lineTo(90, 85)
-
-        # Pisces (The Fish): Two opposing arcs connected by a line.
-        p = self.zodiac_paths["Pisces"]; p.moveTo(15, 10); p.quadTo(-5, 50, 15, 90); p.moveTo(85, 10); p.quadTo(105, 50, 85, 90); p.moveTo(15, 50); p.lineTo(90, 50)
+        self.zodiac_paths = {}
+        for name, svg_path_string in svg_paths.items():
+            path = QPainterPath()
+            path.addText(0, 0, QFont(), "") # Workaround for QPainterPath bug
+            path.clear()
+            # Use QPainterPath's ability to parse SVG path data
+            path.addPath(QPainterPath(svg_path_string))
+            self.zodiac_paths[name] = path
 
         self.zodiac_names = list(self.zodiac_paths.keys())
 
     def _draw_zodiac_glyphs(self, painter, center, radius, color, angle_offset):
-        glyph_size = radius * 0.15
+        glyph_size = radius * 0.12  # Reduced size as requested
         base_radius = radius * 0.925
 
         for i, name in enumerate(self.zodiac_names):
@@ -188,7 +168,8 @@ class ChartDrawingWidget(QFrame):
             painter.rotate(angle_deg - 90)
             painter.scale(glyph_size / 100.0, glyph_size / 100.0)
             painter.translate(-50, -50)
-            self._draw_glow_path(painter, path, color, 1.5)
+            # Use a stroke width of 4 to match the user's CSS
+            self._draw_glow_path(painter, path, color, 4)
             painter.restore()
 
     def paintEvent(self, event):
@@ -308,10 +289,10 @@ class ChartDrawingWidget(QFrame):
         label_font = QFont("Titillium Web", 12); label_font.setBold(True)
         def format_degree(deg):
             deg %= 360
-            sign_index = int(deg / 30)
             deg_in_sign = deg % 30
             minutes = (deg_in_sign - int(deg_in_sign)) * 60
-            return f"{int(deg_in_sign)}° {self.zodiac_symbols[sign_index]} {int(minutes)}'"
+            # Return only the degree and minute, without the zodiac symbol
+            return f"{int(deg_in_sign)}° {int(minutes)}'"
 
         for i, cusp_deg in enumerate(self.display_houses):
             text = format_degree(cusp_deg)
@@ -366,25 +347,38 @@ class ChartDrawingWidget(QFrame):
             painter.restore()
 
     def _draw_glow_path(self, painter, path, color, width):
-        """Draws a QPainterPath with a multi-layered neon glow effect."""
-        # 1. Wide, soft outer glow
-        glow_color_1 = QColor(color)
-        glow_color_1.setAlpha(40) # More subtle
-        pen1 = QPen(glow_color_1, width * 4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+        """
+        Draws a QPainterPath with a multi-layered neon glow effect,
+        replicating the user's specified CSS filter.
+        The 'color' parameter is expected to be QColor("#3DF6FF").
+        """
+        # The base color is #3DF6FF, which is rgba(61, 246, 255).
+
+        # CSS: drop-shadow(0 0 20px rgba(61, 246, 255, 0.4));
+        glow_color_1 = QColor(61, 246, 255, int(255 * 0.4))
+        pen1 = QPen(glow_color_1, width * 3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen1)
         painter.drawPath(path)
 
-        # 2. Medium inner glow
-        glow_color_2 = QColor(color)
-        glow_color_2.setAlpha(80)
+        # CSS: drop-shadow(0 0 12px rgba(61, 246, 255, 0.7));
+        glow_color_2 = QColor(61, 246, 255, int(255 * 0.7))
         pen2 = QPen(glow_color_2, width * 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen2)
         painter.drawPath(path)
 
-        # 3. Core line
-        core_color = color.lighter(150)
-        pen3 = QPen(core_color, width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+        # CSS: drop-shadow(0 0 6px var(--neon-blue));
+        pen3 = QPen(color, width * 1.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen3)
+        painter.drawPath(path)
+
+        # CSS: drop-shadow(0 0 2px var(--neon-blue));
+        pen4 = QPen(color, width * 0.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen4)
+        painter.drawPath(path)
+
+        # Core line (stroke: var(--neon-blue); stroke-width: 4;)
+        pen_core = QPen(color, width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen_core)
         painter.drawPath(path)
 
     def _draw_glow_text(self, painter, point, text, font, color):
