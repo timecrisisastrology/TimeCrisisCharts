@@ -1,14 +1,42 @@
 import sys
+import os
 from datetime import datetime, timezone, timedelta
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QVBoxLayout, QHBoxLayout, QLineEdit, QStackedWidget
 from PyQt6.QtCore import QTimer
-from PyQt6.QtGui import QPalette, QColor
+from PyQt6.QtGui import QPalette, QColor, QFontDatabase
 from widgets import InfoPanel, StyledButton, ChartDrawingWidget
 from time_map_widget import TimeMapWidget
 from astro_engine import (
     calculate_natal_chart, calculate_aspects, calculate_transits,
     calculate_secondary_progressions, calculate_solar_return
 )
+
+def load_fonts():
+    """Loads all .otf, .woff, and .ttf fonts from the 'fonts' directory with detailed logging."""
+    font_dir = "fonts"
+    print("--- Starting Font Loading ---")
+    if not os.path.exists(font_dir):
+        print(f"ERROR: Font directory '{font_dir}' not found. Please ensure the 'fonts' folder exists in the same directory as the application.")
+        return
+
+    font_files = os.listdir(font_dir)
+    if not font_files:
+        print(f"WARNING: The '{font_dir}' directory is empty. No fonts to load.")
+        return
+
+    print(f"Found {len(font_files)} file(s) in the '{font_dir}' directory.")
+
+    for font_file in font_files:
+        if font_file.lower().endswith(('.otf', '.woff', '.ttf')):
+            font_path = os.path.join(font_dir, font_file)
+            print(f"Attempting to load font: {font_path}")
+            font_id = QFontDatabase.addApplicationFont(font_path)
+            if font_id == -1:
+                print(f"  -> ERROR: Failed to load font '{font_path}'. It might be corrupted or not a valid font file.")
+            else:
+                families = QFontDatabase.applicationFontFamilies(font_id)
+                print(f"  -> SUCCESS: Loaded font '{font_path}' with families: {families}")
+    print("--- Font Loading Complete ---")
 
 class MainWindow(QMainWindow):
     """The main window of the application."""
@@ -196,6 +224,7 @@ class MainWindow(QMainWindow):
 # --- Main execution block ---
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    load_fonts() # Load all custom fonts
     window = MainWindow()
     window.show()
     sys.exit(app.exec())

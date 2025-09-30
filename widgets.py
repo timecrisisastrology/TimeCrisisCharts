@@ -1,8 +1,7 @@
 import sys
 import math
 from PyQt6.QtWidgets import QWidget, QLabel, QFormLayout, QVBoxLayout, QFrame, QPushButton, QLineEdit
-import math
-from svg.path import parse_path, Move, Line, Arc, Close, CubicBezier, QuadraticBezier
+# from svg.path import parse_path, Move, Line, Arc, Close, CubicBezier, QuadraticBezier # No longer needed
 from PyQt6.QtGui import QFont, QPainter, QPen, QColor, QBrush, QFontMetrics, QPainterPath, QTransform
 from PyQt6.QtCore import Qt, QPointF, QRectF
 
@@ -98,19 +97,7 @@ class ChartDrawingWidget(QFrame):
         self.planets = {} # Inner wheel planets
         self.outer_planets = None # Outer wheel planets
         self.aspects = []
-        self._define_zodiac_paths()
-
-        # --- Planet & Color Definitions ---
-        self.planet_glyphs = {
-            'Sun': '☉', 'Moon': '☽', 'Mercury': '☿', 'Venus': '♀', 'Mars': '♂',
-            'Jupiter': '♃', 'Saturn': '♄', 'Uranus': '♅', 'Neptune': '♆', 'Pluto': '♇'
-        }
-        self.planet_colors = {
-            'Sun': QColor("#FF01F9"), 'Mars': QColor("#FF01F9"), 'Jupiter': QColor("#FF01F9"),
-            'Moon': QColor("#3DF6FF"), 'Pluto': QColor("#3DF6FF"), 'Neptune': QColor("#3DF6FF"),
-            'Mercury': QColor("#FFFF00"), 'Uranus': QColor("#FFFF00"),
-            'Venus': QColor("#39FF14"), 'Saturn': QColor("#39FF14"),
-        }
+        self._setup_glyph_data()
 
     def set_chart_data(self, natal_planets, natal_houses, aspects, outer_planets=None, display_houses=None):
         self.planets = natal_planets
@@ -120,78 +107,69 @@ class ChartDrawingWidget(QFrame):
         self.display_houses = display_houses if display_houses is not None else natal_houses
         self.update()
 
-    def _define_zodiac_paths(self):
-        """
-        Defines the QPainterPath for each zodiac sign using SVG path data.
-        Paths are designed on a 100x100 canvas for consistent scaling.
-        """
-        # SVG path data provided by the user.
-        svg_paths = {
-            "Aries": "M30 60 Q40 30 50 40 Q60 30 70 60",
-            "Taurus": "M 70 70 A 20 20 0 1 1 30 70 A 20 20 0 1 1 70 70 Z M 25 50 A 25 25 0 0 1 75 50",
-            "Gemini": "M 35 25 V 75 M 65 25 V 75 M 30 30 H 70 M 30 70 H 70",
-            "Cancer": "M 30 50 A 20 20 0 1 0 50 30 A 20 20 0 0 1 70 50 M 30 50 A 20 20 0 1 1 50 70 A 20 20 0 0 0 70 50",
-            "Leo": "M 50 65 A 15 15 0 1 0 50 35 A 15 15 0 0 0 50 65 Z M 65 50 Q 75 40 80 20 L 75 15 Q 60 10 50 20",
-            "Virgo": "M 30 25 V 75 Q 30 70 40 70 Q 50 70 50 50 Q 50 30 60 30 Q 70 30 70 25 V 60 A 15 15 0 1 1 55 60",
-            "Libra": "M 30 40 H 70 M 30 60 H 70 M 30 40 Q 50 20 70 40",
-            "Scorpio": "M 30 25 V 70 Q 30 65 40 65 Q 50 65 50 45 Q 50 25 60 25 Q 70 25 70 20 V 55 Q 70 65 80 60 L 85 70",
-            "Sagittarius": "M 30 70 L 70 30 M 60 30 L 70 30 L 65 40 M 30 70 L 30 60 M 30 70 L 40 65",
-            "Capricorn": "M 30 70 V 30 L 70 30 V 55 Q 70 65 60 70 A 15 15 0 1 1 50 70",
-            "Aquarius": "M 20 40 L 30 50 L 40 30 L 50 50 L 60 30 L 70 50 L 80 40 M 20 60 L 30 70 L 40 50 L 50 70 L 60 50 L 70 70 L 80 60",
-            "Pisces": "M 30 50 H 70 M 50 30 A 20 20 0 0 1 50 70 M 50 30 A 20 20 0 0 0 50 70"
+    def _setup_glyph_data(self):
+        """Initializes all glyph and color data for rendering."""
+        # --- Zodiac Sign Glyphs (using Unicode) ---
+        self.zodiac_glyphs = {
+            'Aries': '♈', 'Taurus': '♉', 'Gemini': '♊', 'Cancer': '♋',
+            'Leo': '♌', 'Virgo': '♍', 'Libra': '♎', 'Scorpio': '♏',
+            'Sagittarius': '♐', 'Capricorn': '♑', 'Aquarius': '♒', 'Pisces': '♓'
+        }
+        self.zodiac_names = list(self.zodiac_glyphs.keys())
+
+        # --- Planet Glyphs (using Unicode) ---
+        self.planet_glyphs = {
+            'Sun': '☉', 'Moon': '☽', 'Mercury': '☿', 'Venus': '♀', 'Mars': '♂',
+            'Jupiter': '♃', 'Saturn': '♄', 'Uranus': '♅', 'Neptune': '♆', 'Pluto': '♇'
         }
 
-        self.zodiac_paths = {}
-        for name, svg_path_string in svg_paths.items():
-            path_segments = parse_path(svg_path_string)
-            q_path = QPainterPath()
-            for segment in path_segments:
-                if isinstance(segment, Move):
-                    q_path.moveTo(segment.end.real, segment.end.imag)
-                elif isinstance(segment, Line):
-                    q_path.lineTo(segment.end.real, segment.end.imag)
-                elif isinstance(segment, Close):
-                    q_path.closeSubpath()
-                elif isinstance(segment, QuadraticBezier):
-                    q_path.quadTo(segment.control.real, segment.control.imag, segment.end.real, segment.end.imag)
-                elif isinstance(segment, CubicBezier):
-                    q_path.cubicTo(segment.control1.real, segment.control1.imag, segment.control2.real, segment.control2.imag, segment.end.real, segment.end.imag)
-                elif isinstance(segment, Arc):
-                    # This is a simplified conversion. QPainterPath.arcTo requires a bounding
-                    # rectangle, start angle, and sweep length. SVG arcs are more complex.
-                    # This implementation may not render all arcs perfectly.
-                    w = segment.radius.real * 2
-                    h = segment.radius.imag * 2
-                    x = segment.start.real - segment.radius.real
-                    y = segment.start.imag - segment.radius.imag
-                    rect = QRectF(x, y, w, h)
-                    # The angle calculations would be complex, so we'll use a line as a fallback for now.
-                    # A proper implementation would require solving for the arc's center and angles.
-                    q_path.lineTo(segment.end.real, segment.end.imag)
-            self.zodiac_paths[name] = q_path
+        # --- Neon Color Definitions ---
+        # Fire Planets: Neon Pink
+        neon_pink = QColor("#FF01F9")
+        # Water Planets: Neon Blue
+        neon_blue = QColor("#3DF6FF")
+        # Air Planets: Neon Yellow
+        neon_yellow = QColor("#FFFF00")
+        # Earth Planets: Neon Green
+        neon_green = QColor("#39FF14")
 
-        self.zodiac_names = list(self.zodiac_paths.keys())
+        self.planet_colors = {
+            # Fire
+            'Sun': neon_pink, 'Mars': neon_pink, 'Jupiter': neon_pink,
+            # Water
+            'Moon': neon_blue, 'Neptune': neon_blue, 'Pluto': neon_blue,
+            # Air
+            'Mercury': neon_yellow, 'Uranus': neon_yellow,
+            # Earth
+            'Venus': neon_green, 'Saturn': neon_green,
+        }
 
     def _draw_zodiac_glyphs(self, painter, center, radius, color, angle_offset):
-        glyph_size = radius * 0.12  # Reduced size as requested
+        # Use the "Zodiac Signs" font we loaded
+        font = QFont("Zodiac Signs", 35)
+        font.setStyleStrategy(QFont.StyleStrategy.NoFontMerging) # Prevent fallback to emoji fonts
         base_radius = radius * 0.925
 
         for i, name in enumerate(self.zodiac_names):
-            path = self.zodiac_paths[name]
+            glyph = self.zodiac_glyphs[name]
             angle_deg = (i * 30) + 15 + angle_offset
             angle_rad = math.radians(angle_deg)
 
             x = center.x() + base_radius * math.cos(angle_rad)
             y = center.y() + base_radius * math.sin(angle_rad)
 
+            font_metrics = QFontMetrics(font)
+            text_width = font_metrics.horizontalAdvance(glyph)
+            text_height = font_metrics.height()
+
             painter.save()
+            # Move to the glyph's position on the circle
             painter.translate(x, y)
-            # Glyphs are designed "upright", so we rotate them to point outwards.
-            painter.rotate(angle_deg - 90)
-            painter.scale(glyph_size / 100.0, glyph_size / 100.0)
-            painter.translate(-50, -50)
-            # Use a stroke width of 4 to match the user's CSS
-            self._draw_glow_path(painter, path, color, 4)
+            # Since the canvas is flipped, we flip the text back to be upright
+            painter.scale(1, -1)
+            # Center the glyph on its calculated position
+            draw_point = QPointF(-text_width / 2, text_height / 4)
+            self._draw_glow_text(painter, draw_point, glyph, font, color)
             painter.restore()
 
     def paintEvent(self, event):
@@ -287,7 +265,9 @@ class ChartDrawingWidget(QFrame):
 
     def _draw_planets(self, painter, center, radius, planets, angle_offset):
         """Helper method to draw a wheel of planets."""
-        planet_font = QFont("Titillium Web", 20); planet_font.setBold(True)
+        # Use the same font as the zodiac signs for consistency, adjusting size for planets.
+        planet_font = QFont("Zodiac Signs", 24)
+        planet_font.setStyleStrategy(QFont.StyleStrategy.NoFontMerging) # Prevent fallback to emoji fonts
         for name, position in planets.items():
             angle_rad = math.radians(position[0] + angle_offset)
             x = center.x() + radius * math.cos(angle_rad)
