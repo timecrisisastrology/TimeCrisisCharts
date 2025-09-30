@@ -16,38 +16,34 @@ ASTRO_FONT_NAME = None
 
 def load_fonts():
     """
-    Loads all fonts from the 'fonts' directory and specifically finds the
-    family name of the astrological font for later use.
+    Loads all fonts from the 'fonts' directory and directly sets the
+    hardcoded name for the astrological font. This is more reliable than
+    discovering the family name programmatically.
     """
     global ASTRO_FONT_NAME
     font_dir = "fonts"
-    astro_font_filename = "EnigmaAstrology2.ttf"
+    astro_font_path = os.path.join(font_dir, "EnigmaAstrology2.ttf")
 
-    if not os.path.exists(font_dir):
-        print(f"ERROR: Font directory '{font_dir}' not found.")
-        return
+    # Load the specific astrological font
+    font_id = QFontDatabase.addApplicationFont(astro_font_path)
 
+    if font_id != -1:
+        # Instead of discovering the name, we use the known, correct family name.
+        ASTRO_FONT_NAME = "EnigmaAstrology2"
+        print(f"SUCCESS: Astrological font '{astro_font_path}' loaded. Using hardcoded family name: '{ASTRO_FONT_NAME}'")
+    else:
+        print(f"CRITICAL ERROR: Failed to load the required astrological font from '{astro_font_path}'.")
+        # As a fallback, try to use a generic font, although glyphs will be missing.
+        ASTRO_FONT_NAME = "Arial"
+
+    # Optionally, load other fonts if needed, without the complex discovery
     for font_file in os.listdir(font_dir):
-        if font_file.lower().endswith(('.otf', '.woff', '.ttf')):
+        if font_file.lower().endswith(('.otf', '.woff', '.ttf')) and font_file != "EnigmaAstrology2.ttf":
             font_path = os.path.join(font_dir, font_file)
-            font_id = QFontDatabase.addApplicationFont(font_path)
-
-            if font_id == -1:
-                print(f"ERROR: Failed to load font '{font_path}'.")
+            if QFontDatabase.addApplicationFont(font_path) == -1:
+                print(f"WARNING: Failed to load font '{font_path}'.")
             else:
-                families = QFontDatabase.applicationFontFamilies(font_id)
-                # Check if this is our target astrological font
-                if font_file.lower() == astro_font_filename.lower():
-                    if families:
-                        ASTRO_FONT_NAME = families[0]
-                        print(f"SUCCESS: Found and set astrological font: '{ASTRO_FONT_NAME}' from '{font_path}'")
-                    else:
-                        print(f"ERROR: Could not get font family for '{font_path}'")
-                else:
-                    print(f"INFO: Loaded font '{font_path}' with families: {families}")
-
-    if ASTRO_FONT_NAME is None:
-        print(f"CRITICAL ERROR: The required astrological font '{astro_font_filename}' was not found or failed to load.")
+                print(f"INFO: Loaded general font '{font_path}'.")
 
 class MainWindow(QMainWindow):
     """The main window of the application."""
@@ -159,7 +155,7 @@ class MainWindow(QMainWindow):
     def _create_chart_area(self):
         # --- NEW: Use QStackedWidget to manage views ---
         self.view_stack = QStackedWidget()
-        # Pass the global font name to the drawing widget
+        # Pass the global font name to the drawing widget, ensuring dependency injection.
         self.chart_area = ChartDrawingWidget(ASTRO_FONT_NAME)
         self.time_map_area = TimeMapWidget()
         self.view_stack.addWidget(self.chart_area)
