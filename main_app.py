@@ -22,10 +22,10 @@ def load_fonts():
             font_path = os.path.join(font_dir, font_file)
             font_id = QFontDatabase.addApplicationFont(font_path)
             if font_id == -1:
-                print(f"Warning: Failed to load font '{font_path}'. May not be a valid font file.")
+                print(f"ERROR: Failed to load font '{font_path}'. This may be because it is not a valid font file or there are permission issues.")
             else:
                 families = QFontDatabase.applicationFontFamilies(font_id)
-                # print(f"Successfully loaded font '{font_path}' with families: {families}")
+                print(f"INFO: Successfully loaded font '{font_path}' with families: {families}")
 
 class MainWindow(QMainWindow):
     """The main window of the application."""
