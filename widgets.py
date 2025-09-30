@@ -1,8 +1,10 @@
 import sys
 import math
 from PyQt6.QtWidgets import QWidget, QLabel, QFormLayout, QVBoxLayout, QFrame, QPushButton, QLineEdit
+import math
+from svg.path import parse_path, Move, Line, Arc, Close, CubicBezier, QuadraticBezier
 from PyQt6.QtGui import QFont, QPainter, QPen, QColor, QBrush, QFontMetrics, QPainterPath, QTransform
-from PyQt6.QtCore import Qt, QPointF
+from PyQt6.QtCore import Qt, QPointF, QRectF
 
 class InfoPanel(QWidget):
     """A custom, styled panel for displaying astrological data. Can accept QWidgets."""
@@ -141,12 +143,32 @@ class ChartDrawingWidget(QFrame):
 
         self.zodiac_paths = {}
         for name, svg_path_string in svg_paths.items():
-            path = QPainterPath()
-            path.addText(0, 0, QFont(), "") # Workaround for QPainterPath bug
-            path.clear()
-            # Use QPainterPath's ability to parse SVG path data
-            path.addPath(QPainterPath(svg_path_string))
-            self.zodiac_paths[name] = path
+            path_segments = parse_path(svg_path_string)
+            q_path = QPainterPath()
+            for segment in path_segments:
+                if isinstance(segment, Move):
+                    q_path.moveTo(segment.end.real, segment.end.imag)
+                elif isinstance(segment, Line):
+                    q_path.lineTo(segment.end.real, segment.end.imag)
+                elif isinstance(segment, Close):
+                    q_path.closeSubpath()
+                elif isinstance(segment, QuadraticBezier):
+                    q_path.quadTo(segment.control.real, segment.control.imag, segment.end.real, segment.end.imag)
+                elif isinstance(segment, CubicBezier):
+                    q_path.cubicTo(segment.control1.real, segment.control1.imag, segment.control2.real, segment.control2.imag, segment.end.real, segment.end.imag)
+                elif isinstance(segment, Arc):
+                    # This is a simplified conversion. QPainterPath.arcTo requires a bounding
+                    # rectangle, start angle, and sweep length. SVG arcs are more complex.
+                    # This implementation may not render all arcs perfectly.
+                    w = segment.radius.real * 2
+                    h = segment.radius.imag * 2
+                    x = segment.start.real - segment.radius.real
+                    y = segment.start.imag - segment.radius.imag
+                    rect = QRectF(x, y, w, h)
+                    # The angle calculations would be complex, so we'll use a line as a fallback for now.
+                    # A proper implementation would require solving for the arc's center and angles.
+                    q_path.lineTo(segment.end.real, segment.end.imag)
+            self.zodiac_paths[name] = q_path
 
         self.zodiac_names = list(self.zodiac_paths.keys())
 
