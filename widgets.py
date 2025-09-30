@@ -137,8 +137,8 @@ class ChartDrawingWidget(QFrame):
         }
 
     def _draw_zodiac_glyphs(self, painter, center, radius, color, angle_offset):
-        # Use the "Zodiac Signs" font we loaded
-        font = QFont("Zodiac Signs", 35)
+        # Use the "EnigmaAstrology2" font we loaded
+        font = QFont("EnigmaAstrology2", 35)
         # CRITICAL: Prevent the OS from substituting the glyphs with emoji or other fonts.
         font.setStyleStrategy(QFont.StyleStrategy.NoFontMerging)
         base_radius = radius * 0.925
@@ -259,7 +259,7 @@ class ChartDrawingWidget(QFrame):
     def _draw_planets(self, painter, center, radius, planets, angle_offset):
         """Helper method to draw a wheel of planets."""
         # Use the same font as the zodiac signs for consistency, adjusting size for planets.
-        planet_font = QFont("Zodiac Signs", 24)
+        planet_font = QFont("EnigmaAstrology2", 24)
         # CRITICAL: Prevent the OS from substituting the glyphs with emoji or other fonts.
         planet_font.setStyleStrategy(QFont.StyleStrategy.NoFontMerging)
         for name, position in planets.items():
