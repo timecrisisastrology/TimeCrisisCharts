@@ -141,6 +141,14 @@ class ChartDrawingWidget(QFrame):
             'Venus': neon_green, 'Saturn': neon_green,                     # Earth
         }
 
+        # --- NEW: Elemental colors for Zodiac signs ---
+        self.zodiac_colors = {
+            'Aries': neon_pink, 'Leo': neon_pink, 'Sagittarius': neon_pink, # Fire
+            'Taurus': neon_green, 'Virgo': neon_green, 'Capricorn': neon_green, # Earth
+            'Gemini': neon_yellow, 'Libra': neon_yellow, 'Aquarius': neon_yellow, # Air
+            'Cancer': neon_blue, 'Scorpio': neon_blue, 'Pisces': neon_blue, # Water
+        }
+
     def _draw_zodiac_glyphs(self, painter, center, radius, color, angle_offset):
         # Use the astro_font_name passed during initialization.
         font = QFont(self.astro_font_name, 35)
@@ -167,7 +175,8 @@ class ChartDrawingWidget(QFrame):
             painter.scale(1, -1)
             # Center the glyph on its calculated position
             draw_point = QPointF(-text_width / 2, text_height / 4)
-            self._draw_glow_text(painter, draw_point, glyph, font, color)
+            glyph_color = self.zodiac_colors.get(name, color) # Use new color map
+            self._draw_glow_text(painter, draw_point, glyph, font, glyph_color)
             painter.restore()
 
     def paintEvent(self, event):
@@ -386,22 +395,21 @@ class ChartDrawingWidget(QFrame):
         """A helper function to draw text with a more realistic, multi-layered neon glow."""
         painter.setFont(font)
 
-        # 1. Draw the wide, soft outer glow (simulating bloom)
+        # 1. Outer Glow: Soft and wide
         glow_color1 = QColor(color)
-        glow_color1.setAlpha(50) # Softer glow
-        pen1 = QPen(glow_color1, 12, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        glow_color1.setAlpha(40) # Reduced alpha for subtlety
+        pen1 = QPen(glow_color1, 7, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
         painter.setPen(pen1)
         painter.drawText(point, text)
 
-        # 2. Draw a tighter, brighter inner glow
+        # 2. Inner Glow: Tighter and brighter
         glow_color2 = QColor(color)
-        glow_color2.setAlpha(100) # Brighter than outer glow
-        pen2 = QPen(glow_color2, 6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        glow_color2.setAlpha(80) # Reduced alpha
+        pen2 = QPen(glow_color2, 4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
         painter.setPen(pen2)
         painter.drawText(point, text)
 
-        # 3. Draw the core text in a very light shade to make it pop
-        core_color = color.lighter(180) # Make it almost white
-        pen3 = QPen(core_color, 1, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        # 3. Core Text: Use the actual neon color, not a lightened version
+        pen3 = QPen(color, 1, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
         painter.setPen(pen3)
         painter.drawText(point, text)
