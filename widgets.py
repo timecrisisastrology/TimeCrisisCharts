@@ -108,19 +108,23 @@ class ChartDrawingWidget(QFrame):
         self.update()
 
     def _setup_glyph_data(self):
-        """Initializes all glyph and color data for rendering, ensuring correct color scheme."""
-        # --- Zodiac Sign Glyphs (using the correct ASCII mapping) ---
+        """
+        Initializes all glyph and color data for rendering.
+        This application uses the "EnigmaAstrology2" font, which is licensed
+        under the GPL. The font is available from: http://radixpro.com/downloads/font/
+        """
+        # --- Zodiac Sign Glyphs (using correct Unicode characters for EnigmaAstrology2) ---
         self.zodiac_glyphs = {
-            'Aries': 'A', 'Taurus': 'B', 'Gemini': 'C', 'Cancer': 'D',
-            'Leo': 'E', 'Virgo': 'F', 'Libra': 'G', 'Scorpio': 'H',
-            'Sagittarius': 'I', 'Capricorn': 'J', 'Aquarius': 'K', 'Pisces': 'L'
+            'Aries': '\uE000', 'Taurus': '\uE001', 'Gemini': '\uE002', 'Cancer': '\uE003',
+            'Leo': '\uE004', 'Virgo': '\uE005', 'Libra': '\uE006', 'Scorpio': '\uE007',
+            'Sagittarius': '\uE008', 'Capricorn': '\uE009', 'Aquarius': '\uE010', 'Pisces': '\uE011'
         }
         self.zodiac_names = list(self.zodiac_glyphs.keys())
 
-        # --- Planet Glyphs (using the correct ASCII mapping) ---
+        # --- Planet Glyphs (using correct Unicode characters for EnigmaAstrology2) ---
         self.planet_glyphs = {
-            'Sun': 'a', 'Moon': 'b', 'Mercury': 'c', 'Venus': 'd', 'Mars': 'e',
-            'Jupiter': 'f', 'Saturn': 'g', 'Uranus': 'h', 'Neptune': 'i', 'Pluto': 'j'
+            'Sun': '\uE200', 'Moon': '\uE201', 'Mercury': '\uE202', 'Venus': '\uE203', 'Mars': '\uE205',
+            'Jupiter': '\uE206', 'Saturn': '\uE207', 'Uranus': '\uE208', 'Neptune': '\uE209', 'Pluto': '\uE210'
         }
 
         # --- Neon Color Definitions ---
