@@ -120,60 +120,94 @@ class ChartDrawingWidget(QFrame):
         self.update()
 
     def _define_zodiac_paths(self):
+        """
+        Defines the QPainterPath for each zodiac sign based on the examples provided.
+        Paths are designed on a 100x100 canvas for consistent scaling.
+        Reference images: Chart_example1.PNG, Chart_example2.PNG, Chart_example3.PNG
+        """
         self.zodiac_paths = {
             "Aries": QPainterPath(), "Taurus": QPainterPath(), "Gemini": QPainterPath(),
             "Cancer": QPainterPath(), "Leo": QPainterPath(), "Virgo": QPainterPath(),
             "Libra": QPainterPath(), "Scorpio": QPainterPath(), "Sagittarius": QPainterPath(),
             "Capricorn": QPainterPath(), "Aquarius": QPainterPath(), "Pisces": QPainterPath()
         }
-        # Paths are defined on a 100x100 canvas for uniform scaling.
-        p = self.zodiac_paths["Aries"]; p.moveTo(50, 80); p.lineTo(50, 20); p.moveTo(30, 40); p.arcTo(20,-5, 20, 50, 180, -180); p.moveTo(70, 40); p.arcTo(60,-5, 20, 50, 0, 180)
-        p = self.zodiac_paths["Taurus"]; p.addEllipse(30, 40, 40, 40); p.moveTo(25, 40); p.arcTo(15, 15, 30, 30, 160, 100); p.moveTo(75, 40); p.arcTo(55, 15, 30, 30, 20, -100)
-        p = self.zodiac_paths["Gemini"]; p.moveTo(30, 20); p.arcTo(20, 10, 20, 20, 180, 180); p.lineTo(30, 80); p.arcTo(20, 70, 20, 20, 180, -180); p.moveTo(70, 20); p.arcTo(60, 10, 20, 20, 0, -180); p.lineTo(70, 80); p.arcTo(60, 70, 20, 20, 0, 180)
-        p = self.zodiac_paths["Cancer"]; p.moveTo(35, 60); p.arcTo(25, 25, 30, 30, 180, 270); p.addEllipse(15, 50, 15, 15); p.moveTo(65, 40); p.arcTo(45, 45, 30, 30, 0, -270); p.addEllipse(70, 30, 15, 15)
-        p = self.zodiac_paths["Leo"]; p.addEllipse(30, 20, 40, 40); p.moveTo(70, 50); p.lineTo(70, 80); p.arcTo(60, 70, 20, 20, 270, -270)
-        p = self.zodiac_paths["Virgo"]; p.moveTo(20, 80); p.lineTo(20, 20); p.moveTo(20, 50); p.lineTo(40, 20); p.lineTo(40, 80); p.moveTo(40, 50); p.lineTo(60, 20); p.lineTo(60, 70); p.arcTo(50, 60, 30, 30, 0, 300); p.lineTo(75, 85)
-        p = self.zodiac_paths["Libra"]; p.moveTo(20, 80); p.lineTo(80, 80); p.moveTo(20, 65); p.lineTo(80, 65); p.moveTo(35, 65); p.arcTo(35, 45, 30, 20, 180, -180)
-        p = self.zodiac_paths["Scorpio"]; p.moveTo(20, 80); p.lineTo(20, 20); p.moveTo(20, 50); p.lineTo(40, 20); p.lineTo(40, 80); p.moveTo(40, 50); p.lineTo(60, 20); p.lineTo(60, 80); p.moveTo(80, 80); p.lineTo(65, 65); p.lineTo(85, 65)
-        p = self.zodiac_paths["Sagittarius"]; p.moveTo(20, 80); p.lineTo(80, 20); p.moveTo(60, 20); p.lineTo(80, 20); p.lineTo(80, 40); p.moveTo(30, 70); p.lineTo(50, 50)
-        p = self.zodiac_paths["Capricorn"]; p.moveTo(20, 20); p.lineTo(20, 50); p.lineTo(40, 80); p.lineTo(60, 50); p.moveTo(40, 80); p.arcTo(30, 30, 50, 60, 0, -200); p.arcTo(40, 50, 20, 30, 270, 200)
-        p = self.zodiac_paths["Aquarius"]; p.moveTo(20, 30); p.lineTo(35, 45); p.lineTo(50, 30); p.lineTo(65, 45); p.lineTo(80, 30); p.moveTo(20, 60); p.lineTo(35, 75); p.lineTo(50, 60); p.lineTo(65, 75); p.lineTo(80, 60)
-        p = self.zodiac_paths["Pisces"]; p.moveTo(20, 20); p.arcTo(-30, 20, 100, 60, 90, 180); p.moveTo(80, 20); p.arcTo(30, 20, 100, 60, 90, -180); p.moveTo(20, 50); p.lineTo(80, 50)
+
+        # Aries (The Ram): Two arcs curving outwards from a central stem.
+        p = self.zodiac_paths["Aries"]; p.moveTo(50, 90); p.lineTo(50, 10); p.moveTo(50, 30); p.quadTo(0, 20, 20, 50); p.moveTo(50, 30); p.quadTo(100, 20, 80, 50)
+
+        # Taurus (The Bull): A circle with horns pointing up.
+        p = self.zodiac_paths["Taurus"]; p.addEllipse(25, 45, 50, 50); p.moveTo(25, 55); p.quadTo(50, 5, 75, 55)
+
+        # Gemini (The Twins): Two parallel vertical lines capped at both ends.
+        p = self.zodiac_paths["Gemini"]; p.moveTo(30, 85); p.lineTo(30, 15); p.moveTo(70, 85); p.lineTo(70, 15); p.moveTo(20, 20); p.lineTo(80, 20); p.moveTo(20, 80); p.lineTo(80, 80)
+
+        # Cancer (The Crab): Two circles with tails, resembling a '69' sideways.
+        p = self.zodiac_paths["Cancer"]; p.addEllipse(15, 50, 30, 30); p.moveTo(45, 65); p.quadTo(60, 85, 80, 75); p.addEllipse(55, 20, 30, 30); p.moveTo(55, 35); p.quadTo(40, 15, 20, 25)
+
+        # Leo (The Lion): A circle with a more stylized, looping tail.
+        p = self.zodiac_paths["Leo"]; p.addEllipse(20, 15, 45, 45); p.moveTo(65, 37.5); p.quadTo(80, 65, 60, 85); p.quadTo(40, 100, 35, 75)
+
+        # Virgo (The Maiden): An 'M' shape with a loop on the final stroke.
+        p = self.zodiac_paths["Virgo"]; p.moveTo(15, 85); p.lineTo(15, 15); p.quadTo(30, 30, 45, 15); p.lineTo(45, 85); p.moveTo(45, 40); p.quadTo(60, 25, 75, 15); p.lineTo(75, 85); p.quadTo(95, 70, 65, 60); p.lineTo(65, 85)
+
+        # Libra (The Scales): A line with a semi-circle hump, above another line.
+        p = self.zodiac_paths["Libra"]; p.moveTo(10, 80); p.lineTo(90, 80); p.moveTo(10, 65); p.lineTo(90, 65); p.moveTo(30, 65); p.quadTo(50, 40, 70, 65)
+
+        # Scorpio (The Scorpion): An 'M' shape with a stinger on the final stroke.
+        p = self.zodiac_paths["Scorpio"]; p.moveTo(15, 85); p.lineTo(15, 15); p.quadTo(30, 30, 45, 15); p.lineTo(45, 85); p.moveTo(45, 40); p.quadTo(60, 25, 75, 15); p.lineTo(75, 85); p.moveTo(75, 80); p.lineTo(95, 60)
+
+        # Sagittarius (The Archer): An arrow pointing up and to the right.
+        p = self.zodiac_paths["Sagittarius"]; p.moveTo(15, 85); p.lineTo(85, 15); p.moveTo(65, 15); p.lineTo(85, 15); p.lineTo(85, 35); p.moveTo(25, 55); p.lineTo(55, 85)
+
+        # Capricorn (The Sea-Goat): A stylized 'V' shape with a looping tail.
+        p = self.zodiac_paths["Capricorn"]; p.moveTo(15, 15); p.lineTo(15, 45); p.lineTo(40, 75); p.lineTo(65, 45); p.moveTo(40, 75); p.quadTo(85, 95, 80, 50); p.quadTo(75, 15, 50, 30)
+
+        # Aquarius (The Water Bearer): Three parallel jagged lines.
+        p = self.zodiac_paths["Aquarius"]; p.moveTo(10, 25); p.lineTo(30, 45); p.lineTo(50, 25); p.lineTo(70, 45); p.lineTo(90, 25); p.moveTo(10, 55); p.lineTo(30, 75); p.lineTo(50, 55); p.lineTo(70, 75); p.lineTo(90, 55); p.moveTo(10, 85); p.lineTo(30, 105); p.lineTo(50, 85); p.lineTo(70, 105); p.lineTo(90, 85)
+
+        # Pisces (The Fish): Two opposing arcs connected by a line.
+        p = self.zodiac_paths["Pisces"]; p.moveTo(15, 10); p.quadTo(-5, 50, 15, 90); p.moveTo(85, 10); p.quadTo(105, 50, 85, 90); p.moveTo(15, 50); p.lineTo(90, 50)
+
         self.zodiac_names = list(self.zodiac_paths.keys())
 
     def _draw_zodiac_glyphs(self, painter, center, radius, color, angle_offset):
         glyph_size = radius * 0.15
-        base_radius = radius * 0.92 - (glyph_size / 2)
+        base_radius = radius * 0.925
 
         for i, name in enumerate(self.zodiac_names):
             path = self.zodiac_paths[name]
             angle_deg = (i * 30) + 15 + angle_offset
-            angle_rad = math.radians(-angle_deg) # Negative for clockwise SVG-style rotation
+            angle_rad = math.radians(angle_deg)
 
-            # Calculate center of the glyph
-            x = center.x() + base_radius * math.cos(math.radians(angle_deg))
-            y = center.y() + base_radius * math.sin(math.radians(angle_deg))
+            x = center.x() + base_radius * math.cos(angle_rad)
+            y = center.y() + base_radius * math.sin(angle_rad)
 
-            # Transformation: scale, then translate
-            transform = QTransform()
-            transform.translate(x - (glyph_size/2), y - (glyph_size/2))
-            transform.scale(glyph_size / 100.0, glyph_size / 100.0)
-
-            transformed_path = transform.map(path)
-            self._draw_glow_path(painter, transformed_path, color, 1.5)
+            painter.save()
+            painter.translate(x, y)
+            # Glyphs are designed "upright", so we rotate them to point outwards.
+            painter.rotate(angle_deg - 90)
+            painter.scale(glyph_size / 100.0, glyph_size / 100.0)
+            painter.translate(-50, -50)
+            self._draw_glow_path(painter, path, color, 1.5)
+            painter.restore()
 
     def paintEvent(self, event):
         super().paintEvent(event)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
+        # Apply a single transformation to flip the Y-axis.
+        # This makes all subsequent drawing operations use a standard mathematical
+        # coordinate system where Y increases upwards.
+        painter.translate(0, self.height())
+        painter.scale(1, -1)
+
         neon_pink = QColor("#FF01F9")
         neon_blue = QColor("#3DF6FF")
+        # The center now needs to be calculated in the new, flipped coordinate system.
         center = QPointF(self.width() / 2, self.height() / 2)
         radius = min(self.width(), self.height()) / 2 * 0.9
 
-        # --- Rotation Offset ---
-        # The first house cusp (Ascendant) should be at 180 degrees (left side).
         angle_offset = 0
         if self.display_houses:
             angle_offset = 180 - self.display_houses[0]
@@ -261,7 +295,12 @@ class ChartDrawingWidget(QFrame):
             text_height = font_metrics.height()
             point = QPointF(x - text_width / 2, y + text_height / 4)
             planet_color = self.planet_colors.get(name, QColor("white"))
-            self._draw_glow_text(painter, point, glyph, planet_font, planet_color)
+            # Since the whole canvas is flipped, we need to flip the text back
+            painter.save()
+            painter.translate(point)
+            painter.scale(1, -1)
+            self._draw_glow_text(painter, QPointF(-text_width / 2, text_height/4), glyph, planet_font, planet_color)
+            painter.restore()
 
     def _draw_cusp_labels(self, painter, center, radius, color, angle_offset):
         """Helper method to draw the degree labels for each house cusp, rotated along the wheel."""
@@ -287,7 +326,9 @@ class ChartDrawingWidget(QFrame):
 
             painter.save()
             painter.translate(x, y)
-            painter.rotate(rotation_angle + 180 if 90 < angle_with_offset % 360 < 270 else rotation_angle)
+            # Text needs to be readable, so we must flip it back upright in the new coordinate system
+            painter.scale(1, -1)
+            painter.rotate(-(rotation_angle + 180 if 90 < angle_with_offset % 360 < 270 else rotation_angle))
 
             font_metrics = QFontMetrics(label_font)
             text_width = font_metrics.horizontalAdvance(text)
@@ -316,7 +357,13 @@ class ChartDrawingWidget(QFrame):
             text_height = font_metrics.height()
             point = QPointF(x - text_width / 2, y + text_height / 4)
 
-            self._draw_glow_text(painter, point, text, house_font, color)
+            # Since the whole canvas is flipped, we need to flip the text back
+            # to make it readable.
+            painter.save()
+            painter.translate(point)
+            painter.scale(1, -1)
+            self._draw_glow_text(painter, QPointF(-text_width / 2, text_height / 4), text, house_font, color)
+            painter.restore()
 
     def _draw_glow_path(self, painter, path, color, width):
         """Draws a QPainterPath with a multi-layered neon glow effect."""
