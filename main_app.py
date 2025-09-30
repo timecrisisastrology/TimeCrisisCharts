@@ -11,21 +11,43 @@ from astro_engine import (
     calculate_secondary_progressions, calculate_solar_return
 )
 
+# --- Global variable to hold the correct font name ---
+ASTRO_FONT_NAME = None
+
 def load_fonts():
-    """Loads all .otf, .woff, and .ttf fonts from the 'fonts' directory."""
+    """
+    Loads all fonts from the 'fonts' directory and specifically finds the
+    family name of the astrological font for later use.
+    """
+    global ASTRO_FONT_NAME
     font_dir = "fonts"
+    astro_font_filename = "EnigmaAstrology2.ttf"
+
     if not os.path.exists(font_dir):
-        print(f"Font directory '{font_dir}' not found.")
+        print(f"ERROR: Font directory '{font_dir}' not found.")
         return
+
     for font_file in os.listdir(font_dir):
         if font_file.lower().endswith(('.otf', '.woff', '.ttf')):
             font_path = os.path.join(font_dir, font_file)
             font_id = QFontDatabase.addApplicationFont(font_path)
+
             if font_id == -1:
-                print(f"ERROR: Failed to load font '{font_path}'. This may be because it is not a valid font file or there are permission issues.")
+                print(f"ERROR: Failed to load font '{font_path}'.")
             else:
                 families = QFontDatabase.applicationFontFamilies(font_id)
-                print(f"INFO: Successfully loaded font '{font_path}' with families: {families}")
+                # Check if this is our target astrological font
+                if font_file.lower() == astro_font_filename.lower():
+                    if families:
+                        ASTRO_FONT_NAME = families[0]
+                        print(f"SUCCESS: Found and set astrological font: '{ASTRO_FONT_NAME}' from '{font_path}'")
+                    else:
+                        print(f"ERROR: Could not get font family for '{font_path}'")
+                else:
+                    print(f"INFO: Loaded font '{font_path}' with families: {families}")
+
+    if ASTRO_FONT_NAME is None:
+        print(f"CRITICAL ERROR: The required astrological font '{astro_font_filename}' was not found or failed to load.")
 
 class MainWindow(QMainWindow):
     """The main window of the application."""
@@ -137,7 +159,8 @@ class MainWindow(QMainWindow):
     def _create_chart_area(self):
         # --- NEW: Use QStackedWidget to manage views ---
         self.view_stack = QStackedWidget()
-        self.chart_area = ChartDrawingWidget()
+        # Pass the global font name to the drawing widget
+        self.chart_area = ChartDrawingWidget(ASTRO_FONT_NAME)
         self.time_map_area = TimeMapWidget()
         self.view_stack.addWidget(self.chart_area)
         self.view_stack.addWidget(self.time_map_area)
