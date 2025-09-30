@@ -14,7 +14,7 @@ os.environ['QT_FONT_DIR'] = font_dir
 
 # Set the Qt platform plugin to 'offscreen' to allow the application to run
 # in a headless environment for testing and screenshot generation.
-# os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QVBoxLayout, QHBoxLayout, QLineEdit, QStackedWidget
 from PyQt6.QtCore import QTimer
