@@ -272,44 +272,109 @@ class ChartDrawingWidget(QFrame):
                     painter.drawLine(QPointF(p1_x, p1_y), QPointF(p2_x, p2_y))
 
     def _draw_planets(self, painter, center, radius, planets, angle_offset):
-        """Helper method to draw a wheel of planets with their positions."""
+        """
+        Draws planet glyphs and their corresponding labels on the chart.
+        This method includes logic to detect and reposition planets that are
+        too close to each other, preventing them from overlapping.
+        """
         planet_font = QFont(self.astro_font_name, 24)
         planet_font.setStyleStrategy(QFont.StyleStrategy.NoFontMerging)
         label_font = QFont("Titillium Web", 8)
 
-        for name, position_data in planets.items():
-            longitude = position_data[0]
-            angle_rad = math.radians(longitude + angle_offset)
+        # --- 1. Group close planets to prevent overlap ---
+        # Sort planets by longitude to make clustering easier.
+        sorted_planets = sorted(planets.items(), key=lambda item: item[1][0])
+        clusters = []
+        if not sorted_planets:
+            return
 
-            # --- Draw Planet Glyph ---
-            glyph_x = center.x() + radius * math.cos(angle_rad)
-            glyph_y = center.y() + radius * math.sin(angle_rad)
-            glyph = self.planet_glyphs.get(name, '?')
-            planet_color = self.planet_colors.get(name, QColor("white"))
+        # Start the first cluster with the first planet.
+        current_cluster = [sorted_planets[0]]
 
-            painter.save()
-            painter.translate(glyph_x, glyph_y)
-            painter.scale(1, -1) # Flip text back to be upright
-            font_metrics = QFontMetrics(planet_font)
-            text_width = font_metrics.horizontalAdvance(glyph)
-            text_height = font_metrics.height()
-            self._draw_glow_text(painter, QPointF(-text_width / 2, text_height / 4), glyph, planet_font, planet_color)
-            painter.restore()
+        # Define the threshold for what's considered "close."
+        # This value was chosen as it provides good visual separation without
+        # distorting the chart too much.
+        CONJUNCTION_THRESHOLD = 8.0
 
-            # --- Draw Position Label ---
-            label_radius = radius * 1.15 # Place label slightly outside the glyph
-            label_x = center.x() + label_radius * math.cos(angle_rad)
-            label_y = center.y() + label_radius * math.sin(angle_rad)
-            label_text = format_longitude(longitude)
+        for i in range(1, len(sorted_planets)):
+            prev_lon = current_cluster[-1][1][0]
+            curr_lon = sorted_planets[i][1][0]
 
-            painter.save()
-            painter.translate(label_x, label_y)
-            painter.scale(1, -1) # Flip text back to be upright
-            font_metrics = QFontMetrics(label_font)
-            text_width = font_metrics.horizontalAdvance(label_text)
-            text_height = font_metrics.height()
-            self._draw_glow_text(painter, QPointF(-text_width / 2, text_height / 4), label_text, label_font, planet_color)
-            painter.restore()
+            # Calculate the distance, handling the 360->0 degree wrap-around.
+            distance = abs(curr_lon - prev_lon)
+            distance = min(distance, 360 - distance)
+
+            if distance < CONJUNCTION_THRESHOLD:
+                current_cluster.append(sorted_planets[i])
+            else:
+                clusters.append(current_cluster)
+                current_cluster = [sorted_planets[i]]
+        clusters.append(current_cluster)
+
+        # --- 2. Draw each planet, adjusting positions for clusters ---
+        for cluster in clusters:
+            num_planets_in_cluster = len(cluster)
+            is_cluster = num_planets_in_cluster > 1
+
+            if is_cluster:
+                # Calculate the average longitude for the cluster to center it.
+                longitudes = [p[1][0] for p in cluster]
+                # Handle wrap-around for average calculation.
+                if max(longitudes) - min(longitudes) > 180:
+                    avg_lon = (sum(l + 360 if l < 180 else l for l in longitudes) / num_planets_in_cluster) % 360
+                else:
+                    avg_lon = sum(longitudes) / num_planets_in_cluster
+
+            for i, (name, position_data) in enumerate(cluster):
+                longitude = position_data[0]
+
+                # --- Calculate adjusted position for clustered planets ---
+                if is_cluster:
+                    # Spread planets out from the center of the cluster.
+                    # This creates a visually pleasing arc of planets.
+                    angle_step = 4  # Degrees between planets in a cluster.
+                    start_angle = avg_lon - (angle_step * (num_planets_in_cluster - 1) / 2)
+                    current_angle = start_angle + i * angle_step
+
+                    # Alternate radius to prevent labels from overlapping.
+                    current_radius = radius * (1 - 0.05 * (i % 2))
+                else:
+                    # If not in a cluster, use the original position.
+                    current_angle = longitude
+                    current_radius = radius
+
+                angle_rad = math.radians(current_angle + angle_offset)
+
+                # --- Draw Planet Glyph ---
+                glyph_x = center.x() + current_radius * math.cos(angle_rad)
+                glyph_y = center.y() + current_radius * math.sin(angle_rad)
+                glyph = self.planet_glyphs.get(name, '?')
+                planet_color = self.planet_colors.get(name, QColor("white"))
+
+                painter.save()
+                painter.translate(glyph_x, glyph_y)
+                painter.scale(1, -1) # Flip text back to be upright
+                font_metrics = QFontMetrics(planet_font)
+                text_width = font_metrics.horizontalAdvance(glyph)
+                text_height = font_metrics.height()
+                self._draw_glow_text(painter, QPointF(-text_width / 2, text_height / 4), glyph, planet_font, planet_color)
+                painter.restore()
+
+                # --- Draw Position Label ---
+                # Adjust label radius based on the planet's radius to maintain distance.
+                label_radius = current_radius * 1.15
+                label_x = center.x() + label_radius * math.cos(angle_rad)
+                label_y = center.y() + label_radius * math.sin(angle_rad)
+                label_text = format_longitude(longitude)
+
+                painter.save()
+                painter.translate(label_x, label_y)
+                painter.scale(1, -1) # Flip text back to be upright
+                font_metrics = QFontMetrics(label_font)
+                text_width = font_metrics.horizontalAdvance(label_text)
+                text_height = font_metrics.height()
+                self._draw_glow_text(painter, QPointF(-text_width / 2, text_height / 4), label_text, label_font, planet_color)
+                painter.restore()
 
     def _draw_cusp_labels(self, painter, center, radius, color, angle_offset):
         """Helper method to draw the degree labels for each house cusp, rotated along the wheel."""
