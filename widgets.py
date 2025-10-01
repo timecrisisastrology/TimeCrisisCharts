@@ -219,7 +219,6 @@ class ChartDrawingWidget(QFrame):
         # 1. Draw concentric circles
         path = QPainterPath(); path.addEllipse(center, radii["zodiac_outer"], radii["zodiac_outer"]); self._draw_glow_path(painter, path, neon_pink, 2)
         path = QPainterPath(); path.addEllipse(center, radii["zodiac_inner"], radii["zodiac_inner"]); self._draw_glow_path(painter, path, neon_pink, 2)
-        path = QPainterPath(); path.addEllipse(center, radii["inner_wheel"], radii["inner_wheel"]); self._draw_glow_path(painter, path, neon_pink, 2)
         path = QPainterPath(); path.addEllipse(center, radii["aspect_circle"], radii["aspect_circle"]); self._draw_glow_path(painter, path, neon_pink, 2)
         if self.outer_planets:
             path = QPainterPath(); path.addEllipse(center, radii["outer_wheel"], radii["outer_wheel"]); self._draw_glow_path(painter, path, neon_pink, 2)
@@ -343,24 +342,13 @@ class ChartDrawingWidget(QFrame):
                 self._draw_glow_text(painter, QPointF(-font_metrics.horizontalAdvance(glyph) / 2, font_metrics.height() / 4), glyph, planet_font, planet_color)
                 painter.restore()
 
-                # --- Draw Line and Position Label ---
-                line_start_radius = current_radius * 0.9
-                line_end_radius = current_radius * 0.75
-                label_radius = line_end_radius - 5 # Place label just inside the line
-
-                # Line
-                line_start_x = center.x() + line_start_radius * math.cos(angle_rad)
-                line_start_y = center.y() + line_start_radius * math.sin(angle_rad)
-                line_end_x = center.x() + line_end_radius * math.cos(angle_rad)
-                line_end_y = center.y() + line_end_radius * math.sin(angle_rad)
-
-                pen = QPen(planet_color, 0.5)
-                painter.setPen(pen)
-                painter.drawLine(QPointF(line_start_x, line_start_y), QPointF(line_end_x, line_end_y))
-
-                # Label
+                # --- Draw Position Label ---
+                label_radius = current_radius * 0.85
                 label_text = f"{format_longitude(longitude, show_sign=False)}\n{get_zodiac_sign(longitude)[:3]}"
+
                 font_metrics = QFontMetrics(label_font)
+                # Use a QRect for bounding to handle multi-line text correctly
+                text_rect = font_metrics.boundingRect(QRect(0,0,150,50), Qt.AlignmentFlag.AlignCenter, label_text)
 
                 label_x = center.x() + label_radius * math.cos(angle_rad)
                 label_y = center.y() + label_radius * math.sin(angle_rad)
@@ -369,15 +357,20 @@ class ChartDrawingWidget(QFrame):
                 painter.translate(label_x, label_y)
                 painter.scale(1, -1)
 
-                # Rotate text to be upright relative to the chart's orientation
-                rotation_angle = current_angle + angle_offset - 90
-                if 90 < (current_angle + angle_offset) % 360 < 270:
-                    rotation_angle -= 180
+                rotation_angle = current_angle + angle_offset
+
+                # Rotate the canvas to align with the planet's angle
                 painter.rotate(-rotation_angle)
 
-                # Use bounding rect for multi-line text
-                text_rect = font_metrics.boundingRect(QRect(0, 0, 50, 50), Qt.AlignmentFlag.AlignCenter, label_text)
-                draw_point = QPointF(-text_rect.width() / 2, -text_rect.height() / 2 + font_metrics.ascent())
+                # Adjust for readability based on position
+                if 90 < (rotation_angle + 90) % 360 < 270:
+                    # Left side of the chart: flip text 180 degrees to be readable
+                    painter.rotate(180)
+                    # Draw text starting from the point, moving away (which is inward)
+                    draw_point = QPointF(5, -text_rect.height() / 2 + font_metrics.ascent())
+                else:
+                    # Right side of the chart: draw text "backwards" from the point
+                    draw_point = QPointF(-text_rect.width() - 5, -text_rect.height() / 2 + font_metrics.ascent())
 
                 self._draw_glow_text(painter, draw_point, label_text, label_font, planet_color)
                 painter.restore()
