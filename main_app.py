@@ -2,6 +2,9 @@ import sys
 import os
 import json
 from datetime import datetime, timezone, timedelta
+import pytz
+from geopy.geocoders import Nominatim
+from timezonefinder import TimezoneFinder
 
 # Set the Qt platform plugin to 'offscreen' to allow the application to run
 # in a headless environment for testing and screenshot generation.
@@ -100,15 +103,13 @@ class MainWindow(QMainWindow):
         self.name_input = QLineEdit("Jane Doe")
         self.birth_date_input = QLineEdit("1989-05-15")
         self.birth_time_input = QLineEdit("08:30")
-        self.birth_lat_input = QLineEdit(str(self.london_lat))
-        self.birth_lon_input = QLineEdit(str(self.london_lon))
+        self.location_input = QLineEdit("Providence, RI, USA")
 
         natal_data = {
             "Name": self.name_input,
             "Birth Date (YYYY-MM-DD)": self.birth_date_input,
             "Birth Time (HH:MM)": self.birth_time_input,
-            "Latitude": self.birth_lat_input,
-            "Longitude": self.birth_lon_input,
+            "Location": self.location_input,
         }
 
         # This will be a new VBox layout to hold the panel and the button
@@ -248,35 +249,53 @@ class MainWindow(QMainWindow):
         and updates the application state and display.
         """
         try:
-            # 1. Parse the input values
+            # 1. Initialize geocoding tools
+            geolocator = Nominatim(user_agent="timecrisis-astrology")
+            tf = TimezoneFinder()
+
+            # 2. Parse the input values
             name = self.name_input.text()
             date_str = self.birth_date_input.text()
             time_str = self.birth_time_input.text()
-            lat = float(self.birth_lat_input.text())
-            lon = float(self.birth_lon_input.text())
+            location_str = self.location_input.text()
 
-            # 2. Combine date and time and create a timezone-aware datetime object
+            # 3. Geocode the location to get lat, lon, and timezone
+            location = geolocator.geocode(location_str)
+            if not location:
+                print(f"Error: Could not geocode location '{location_str}'.")
+                return
+
+            lat = location.latitude
+            lon = location.longitude
+            tz_name = tf.timezone_at(lng=lon, lat=lat)
+            if not tz_name:
+                print(f"Error: Could not find timezone for {lat}, {lon}.")
+                return
+
+            local_tz = pytz.timezone(tz_name)
+
+            # 4. Combine date and time, localize to the found timezone, and convert to UTC
             birth_dt_str = f"{date_str} {time_str}"
-            # This assumes the input time is UTC. A more advanced implementation
-            # would need a timezone input field.
-            birth_datetime = datetime.strptime(birth_dt_str, '%Y-%m-%d %H:%M').replace(tzinfo=timezone.utc)
+            naive_datetime = datetime.strptime(birth_dt_str, '%Y-%m-%d %H:%M')
+            local_datetime = local_tz.localize(naive_datetime)
+            birth_datetime_utc = local_datetime.astimezone(timezone.utc)
 
-            # 3. Recalculate the natal chart and aspects
-            self.natal_planets, self.natal_houses = calculate_natal_chart(birth_datetime, lat, lon)
+            # 5. Recalculate the natal chart and aspects
+            self.natal_planets, self.natal_houses = calculate_natal_chart(birth_datetime_utc, lat, lon)
             self.natal_aspects = calculate_aspects(self.natal_planets, 7) # Using a default orb of 7
 
-            # Store the new birth date for use in other calculations like progressions
-            self.sample_birth_date = birth_datetime
+            # Store the new birth date for use in other calculations
+            self.sample_birth_date = birth_datetime_utc
 
-            # 4. Update the chart display
-            print(f"Successfully generated new chart for {name}.")
+            # 6. Update the chart display
+            print(f"Successfully generated new chart for {name} in {location.address}.")
             self.update_chart()
 
         except ValueError as e:
-            # Handle cases where date/time format is wrong or lat/lon are not numbers
+            # Handle cases where date/time format is wrong
             print(f"Error parsing input data: {e}")
         except Exception as e:
-            # Catch any other unexpected errors during chart generation
+            # Catch any other unexpected errors
             print(f"An unexpected error occurred: {e}")
 
     def handle_save_chart(self):
@@ -289,8 +308,7 @@ class MainWindow(QMainWindow):
                 "name": self.name_input.text(),
                 "birth_date": self.birth_date_input.text(),
                 "birth_time": self.birth_time_input.text(),
-                "latitude": self.birth_lat_input.text(),
-                "longitude": self.birth_lon_input.text()
+                "location": self.location_input.text(),
             }
             try:
                 with open(file_name, 'w') as f:
@@ -314,8 +332,7 @@ class MainWindow(QMainWindow):
                 self.name_input.setText(chart_data.get("name", ""))
                 self.birth_date_input.setText(chart_data.get("birth_date", ""))
                 self.birth_time_input.setText(chart_data.get("birth_time", ""))
-                self.birth_lat_input.setText(chart_data.get("latitude", ""))
-                self.birth_lon_input.setText(chart_data.get("longitude", ""))
+                self.location_input.setText(chart_data.get("location", ""))
 
                 # Automatically generate the chart with the loaded data
                 self.handle_generate_chart()
