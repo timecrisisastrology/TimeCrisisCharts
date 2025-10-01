@@ -10,7 +10,7 @@ from timezonefinder import TimezoneFinder
 # in a headless environment for testing and screenshot generation.
 # os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 
-from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QVBoxLayout, QHBoxLayout, QLineEdit, QStackedWidget, QFileDialog
+from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QVBoxLayout, QHBoxLayout, QLineEdit, QStackedWidget, QFileDialog, QComboBox, QMessageBox
 from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QPalette, QColor, QFontDatabase
 from widgets import InfoPanel, StyledButton, ChartDrawingWidget
@@ -103,13 +103,31 @@ class MainWindow(QMainWindow):
         self.name_input = QLineEdit("Jane Doe")
         self.birth_date_input = QLineEdit("1989-05-15")
         self.birth_time_input = QLineEdit("08:30")
+        self.ampm_input = QComboBox()
+        self.ampm_input.addItems(["AM", "PM"])
         self.location_input = QLineEdit("Providence, RI, USA")
+        self.house_system_input = QComboBox()
+
+        # --- House System Options ---
+        self.house_systems = {
+            "Placidus": "P", "Koch": "K", "Regiomontanus": "R",
+            "Campanus": "C", "Equal": "E", "Whole Sign": "W"
+        }
+        self.house_system_input.addItems(self.house_systems.keys())
+
+        # --- Group Time Inputs ---
+        time_container = QWidget()
+        time_layout = QHBoxLayout(time_container)
+        time_layout.setContentsMargins(0, 0, 0, 0)
+        time_layout.addWidget(self.birth_time_input)
+        time_layout.addWidget(self.ampm_input)
 
         natal_data = {
             "Name": self.name_input,
             "Birth Date (YYYY-MM-DD)": self.birth_date_input,
-            "Birth Time (HH:MM)": self.birth_time_input,
+            "Birth Time (HH:MM)": time_container,
             "Location": self.location_input,
+            "House System": self.house_system_input,
         }
 
         # This will be a new VBox layout to hold the panel and the button
@@ -257,31 +275,34 @@ class MainWindow(QMainWindow):
             name = self.name_input.text()
             date_str = self.birth_date_input.text()
             time_str = self.birth_time_input.text()
+            ampm_str = self.ampm_input.currentText()
             location_str = self.location_input.text()
 
             # 3. Geocode the location to get lat, lon, and timezone
             location = geolocator.geocode(location_str)
             if not location:
-                print(f"Error: Could not geocode location '{location_str}'.")
+                QMessageBox.critical(self, "Error", f"Could not find location: '{location_str}'. Please check the spelling or try a different format (e.g., 'City, State, Country').")
                 return
 
             lat = location.latitude
             lon = location.longitude
             tz_name = tf.timezone_at(lng=lon, lat=lat)
             if not tz_name:
-                print(f"Error: Could not find timezone for {lat}, {lon}.")
+                QMessageBox.critical(self, "Error", f"Could not determine the timezone for the location: {location.address}.")
                 return
 
             local_tz = pytz.timezone(tz_name)
 
             # 4. Combine date and time, localize to the found timezone, and convert to UTC
-            birth_dt_str = f"{date_str} {time_str}"
-            naive_datetime = datetime.strptime(birth_dt_str, '%Y-%m-%d %H:%M')
+            birth_dt_str = f"{date_str} {time_str} {ampm_str}"
+            naive_datetime = datetime.strptime(birth_dt_str, '%Y-%m-%d %I:%M %p')
             local_datetime = local_tz.localize(naive_datetime)
             birth_datetime_utc = local_datetime.astimezone(timezone.utc)
 
             # 5. Recalculate the natal chart and aspects
-            self.natal_planets, self.natal_houses = calculate_natal_chart(birth_datetime_utc, lat, lon)
+            selected_house_system_name = self.house_system_input.currentText()
+            house_system_code = self.house_systems[selected_house_system_name]
+            self.natal_planets, self.natal_houses = calculate_natal_chart(birth_datetime_utc, lat, lon, house_system=bytes(house_system_code, 'utf-8'))
             self.natal_aspects = calculate_aspects(self.natal_planets, 7) # Using a default orb of 7
 
             # Store the new birth date for use in other calculations
@@ -291,12 +312,10 @@ class MainWindow(QMainWindow):
             print(f"Successfully generated new chart for {name} in {location.address}.")
             self.update_chart()
 
-        except ValueError as e:
-            # Handle cases where date/time format is wrong
-            print(f"Error parsing input data: {e}")
+        except ValueError:
+            QMessageBox.critical(self, "Error", "Invalid Date or Time Format. Please use YYYY-MM-DD for date and HH:MM AM/PM for time.")
         except Exception as e:
-            # Catch any other unexpected errors
-            print(f"An unexpected error occurred: {e}")
+            QMessageBox.critical(self, "An Unexpected Error Occurred", f"An unexpected error occurred: {e}")
 
     def handle_save_chart(self):
         """
@@ -308,7 +327,9 @@ class MainWindow(QMainWindow):
                 "name": self.name_input.text(),
                 "birth_date": self.birth_date_input.text(),
                 "birth_time": self.birth_time_input.text(),
+                "ampm": self.ampm_input.currentText(),
                 "location": self.location_input.text(),
+                "house_system": self.house_system_input.currentText(),
             }
             try:
                 with open(file_name, 'w') as f:
@@ -332,7 +353,9 @@ class MainWindow(QMainWindow):
                 self.name_input.setText(chart_data.get("name", ""))
                 self.birth_date_input.setText(chart_data.get("birth_date", ""))
                 self.birth_time_input.setText(chart_data.get("birth_time", ""))
+                self.ampm_input.setCurrentText(chart_data.get("ampm", "AM"))
                 self.location_input.setText(chart_data.get("location", ""))
+                self.house_system_input.setCurrentText(chart_data.get("house_system", "Placidus"))
 
                 # Automatically generate the chart with the loaded data
                 self.handle_generate_chart()
