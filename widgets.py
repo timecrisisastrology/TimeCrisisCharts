@@ -203,23 +203,34 @@ class ChartDrawingWidget(QFrame):
         if self.display_houses:
             angle_offset = 180 - self.display_houses[0]
 
+        # Define key radii for chart construction.
+        # These are calculated dynamically to ensure proper spacing and proportions.
+        zodiac_inner_radius = radius * 0.85
+        aspect_circle_radius = radius * 0.30
+
+        # Calculate the midpoint for the bi-wheel separator to ensure it's equidistant.
+        outer_wheel_radius = (zodiac_inner_radius + aspect_circle_radius) / 2
+
         radii = {
             "zodiac_outer": radius,
-            "zodiac_inner": radius * 0.85,
-            "outer_wheel": radius * 0.70, # Adjusted for more space
-            "inner_wheel": radius * 0.50, # Adjusted for more space
-            "aspect_circle": radius * 0.30, # Adjusted
-            "outer_planets": radius * 0.78, # Adjusted
-            "inner_planets_bi": radius * 0.60, # Adjusted
-            "inner_planets_single": radius * 0.60,
-            "house_numbers": radius * 0.22, # Moved house numbers inward
-            "aspect_lines": radius * 0.30 * 0.95 # Adjusted
+            "zodiac_inner": zodiac_inner_radius,
+            "outer_wheel": outer_wheel_radius, # Equidistant separator for bi-wheels
+            "aspect_circle": aspect_circle_radius,
+
+            # Position planets in the middle of their respective rings.
+            "outer_planets": (zodiac_inner_radius + outer_wheel_radius) / 2,
+            "inner_planets_bi": (outer_wheel_radius + aspect_circle_radius) / 2,
+            "inner_planets_single": (zodiac_inner_radius + aspect_circle_radius) / 2,
+
+            "house_numbers": radius * 0.22,
+            "aspect_lines": aspect_circle_radius * 0.95,
         }
 
         # 1. Draw concentric circles
         path = QPainterPath(); path.addEllipse(center, radii["zodiac_outer"], radii["zodiac_outer"]); self._draw_glow_path(painter, path, neon_pink, 2)
         path = QPainterPath(); path.addEllipse(center, radii["zodiac_inner"], radii["zodiac_inner"]); self._draw_glow_path(painter, path, neon_pink, 2)
         path = QPainterPath(); path.addEllipse(center, radii["aspect_circle"], radii["aspect_circle"]); self._draw_glow_path(painter, path, neon_pink, 2)
+        # For bi-wheel charts (like transits), draw the separator circle.
         if self.outer_planets:
             path = QPainterPath(); path.addEllipse(center, radii["outer_wheel"], radii["outer_wheel"]); self._draw_glow_path(painter, path, neon_pink, 2)
 
@@ -343,7 +354,9 @@ class ChartDrawingWidget(QFrame):
                 painter.restore()
 
                 # --- Draw Position Label ---
-                label_radius = current_radius * 0.85
+                # The label_radius is now calculated to be much closer to the planet glyph
+                # to prevent it from crossing into other rings on the chart.
+                label_radius = current_radius * 0.95
                 label_text = f"{format_longitude(longitude, show_sign=False)}\n{get_zodiac_sign(longitude)[:3]}"
 
                 font_metrics = QFontMetrics(label_font)
