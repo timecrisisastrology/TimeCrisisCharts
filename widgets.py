@@ -2,8 +2,8 @@ import sys
 import math
 from PyQt6.QtWidgets import QWidget, QLabel, QFormLayout, QVBoxLayout, QFrame, QPushButton, QLineEdit
 from PyQt6.QtGui import QFont, QPainter, QPen, QColor, QBrush, QFontMetrics, QPainterPath, QTransform
-from PyQt6.QtCore import Qt, QPointF, QRectF
-from astro_engine import format_longitude
+from PyQt6.QtCore import Qt, QPointF, QRectF, QRect
+from astro_engine import format_longitude, get_zodiac_sign
 
 class InfoPanel(QWidget):
     """A custom, styled panel for displaying astrological data. Can accept QWidgets."""
@@ -202,10 +202,16 @@ class ChartDrawingWidget(QFrame):
             angle_offset = 180 - self.display_houses[0]
 
         radii = {
-            "zodiac_outer": radius, "zodiac_inner": radius * 0.85, "outer_wheel": radius * 0.65,
-            "inner_wheel": radius * 0.45, "aspect_circle": radius * 0.25, "outer_planets": radius * 0.75,
-            "inner_planets_bi": radius * 0.55, "inner_planets_single": radius * 0.60,
-            "house_numbers": radius * 0.35, "aspect_lines": radius * 0.25 * 0.85
+            "zodiac_outer": radius,
+            "zodiac_inner": radius * 0.85,
+            "outer_wheel": radius * 0.70, # Adjusted for more space
+            "inner_wheel": radius * 0.50, # Adjusted for more space
+            "aspect_circle": radius * 0.30, # Adjusted
+            "outer_planets": radius * 0.78, # Adjusted
+            "inner_planets_bi": radius * 0.60, # Adjusted
+            "inner_planets_single": radius * 0.60,
+            "house_numbers": radius * 0.22, # Moved house numbers inward
+            "aspect_lines": radius * 0.30 * 0.95 # Adjusted
         }
 
         # 1. Draw concentric circles
@@ -273,21 +279,18 @@ class ChartDrawingWidget(QFrame):
 
     def _draw_planets(self, painter, center, radius, planets, angle_offset):
         """
-        Draws planet glyphs and their corresponding labels on the chart.
-        This method includes logic to detect and reposition planets that are
-        too close to each other, preventing them from overlapping.
+        Draws planet glyphs and their corresponding degree labels, with lines
+        pointing towards the center, similar to the user's example.
         """
         planet_font = QFont(self.astro_font_name, 24)
         planet_font.setStyleStrategy(QFont.StyleStrategy.NoFontMerging)
-        label_font = QFont("Titillium Web", 8)
+        label_font = QFont("Titillium Web", 10) # Increased font size for clarity
 
-        # --- 1. Group close planets to prevent overlap ---
         sorted_planets = sorted(planets.items(), key=lambda item: item[1][0])
         clusters = []
         if not sorted_planets: return
 
         current_cluster = [sorted_planets[0]]
-        # Increased threshold to better group visually close planets.
         CONJUNCTION_THRESHOLD = 12.0
 
         for i in range(1, len(sorted_planets)):
@@ -302,63 +305,79 @@ class ChartDrawingWidget(QFrame):
                 current_cluster = [sorted_planets[i]]
         clusters.append(current_cluster)
 
-        # --- 2. Draw each planet, adjusting positions for clusters ---
         for cluster in clusters:
             num_planets_in_cluster = len(cluster)
             is_cluster = num_planets_in_cluster > 1
 
             if is_cluster:
                 longitudes = [p[1][0] for p in cluster]
-                if max(longitudes) - min(longitudes) > 180:
+                avg_lon = sum(longitudes) / num_planets_in_cluster
+                if max(longitudes) - min(longitudes) > 180: # Handle wrap-around for avg
                     avg_lon = (sum(l + 360 if l < 180 else l for l in longitudes) / num_planets_in_cluster) % 360
-                else:
-                    avg_lon = sum(longitudes) / num_planets_in_cluster
 
             for i, (name, position_data) in enumerate(cluster):
                 longitude = position_data[0]
 
                 if is_cluster:
-                    # Increased angle_step for more separation.
                     angle_step = 6
                     start_angle = avg_lon - (angle_step * (num_planets_in_cluster - 1) / 2)
                     current_angle = start_angle + i * angle_step
-                    # Increased radial staggering for better label visibility.
-                    current_radius = radius * (1 - 0.10 * (i % 2))
+                    current_radius = radius * (1 - 0.12 * (i % 2)) # Stagger radius
                 else:
                     current_angle = longitude
                     current_radius = radius
 
                 angle_rad = math.radians(current_angle + angle_offset)
+                planet_color = self.planet_colors.get(name, QColor("white"))
 
                 # --- Draw Planet Glyph ---
                 glyph_x = center.x() + current_radius * math.cos(angle_rad)
                 glyph_y = center.y() + current_radius * math.sin(angle_rad)
                 glyph = self.planet_glyphs.get(name, '?')
-                planet_color = self.planet_colors.get(name, QColor("white"))
-
                 painter.save()
                 painter.translate(glyph_x, glyph_y)
                 painter.scale(1, -1)
                 font_metrics = QFontMetrics(planet_font)
-                text_width = font_metrics.horizontalAdvance(glyph)
-                text_height = font_metrics.height()
-                self._draw_glow_text(painter, QPointF(-text_width / 2, text_height / 4), glyph, planet_font, planet_color)
+                self._draw_glow_text(painter, QPointF(-font_metrics.horizontalAdvance(glyph) / 2, font_metrics.height() / 4), glyph, planet_font, planet_color)
                 painter.restore()
 
-                # --- Draw Position Label ---
-                # Increased label radius to give more space.
-                label_radius = current_radius * 1.20
+                # --- Draw Line and Position Label ---
+                line_start_radius = current_radius * 0.9
+                line_end_radius = current_radius * 0.75
+                label_radius = line_end_radius - 5 # Place label just inside the line
+
+                # Line
+                line_start_x = center.x() + line_start_radius * math.cos(angle_rad)
+                line_start_y = center.y() + line_start_radius * math.sin(angle_rad)
+                line_end_x = center.x() + line_end_radius * math.cos(angle_rad)
+                line_end_y = center.y() + line_end_radius * math.sin(angle_rad)
+
+                pen = QPen(planet_color, 0.5)
+                painter.setPen(pen)
+                painter.drawLine(QPointF(line_start_x, line_start_y), QPointF(line_end_x, line_end_y))
+
+                # Label
+                label_text = f"{format_longitude(longitude, show_sign=False)}\n{get_zodiac_sign(longitude)[:3]}"
+                font_metrics = QFontMetrics(label_font)
+
                 label_x = center.x() + label_radius * math.cos(angle_rad)
                 label_y = center.y() + label_radius * math.sin(angle_rad)
-                label_text = format_longitude(longitude)
 
                 painter.save()
                 painter.translate(label_x, label_y)
                 painter.scale(1, -1)
-                font_metrics = QFontMetrics(label_font)
-                text_width = font_metrics.horizontalAdvance(label_text)
-                text_height = font_metrics.height()
-                self._draw_glow_text(painter, QPointF(-text_width / 2, text_height / 4), label_text, label_font, planet_color)
+
+                # Rotate text to be upright relative to the chart's orientation
+                rotation_angle = current_angle + angle_offset - 90
+                if 90 < (current_angle + angle_offset) % 360 < 270:
+                    rotation_angle -= 180
+                painter.rotate(-rotation_angle)
+
+                # Use bounding rect for multi-line text
+                text_rect = font_metrics.boundingRect(QRect(0, 0, 50, 50), Qt.AlignmentFlag.AlignCenter, label_text)
+                draw_point = QPointF(-text_rect.width() / 2, -text_rect.height() / 2 + font_metrics.ascent())
+
+                self._draw_glow_text(painter, draw_point, label_text, label_font, planet_color)
                 painter.restore()
 
     def _draw_cusp_labels(self, painter, center, radius, color, angle_offset):
@@ -428,14 +447,16 @@ class ChartDrawingWidget(QFrame):
             painter.restore()
 
     def _draw_house_numbers(self, painter, center, radius, color, angle_offset):
-        """Helper method to draw the house numbers in the center of each house."""
+        """Helper method to draw the house numbers in their new, smaller inner ring."""
         if not self.display_houses: return
-        house_font = QFont("Titillium Web", 12); house_font.setBold(True)
+        house_font = QFont("Titillium Web", 10) # Smaller font for a smaller ring
+        house_font.setBold(True)
         for i in range(12):
             start_angle = self.display_houses[i]
             end_angle = self.display_houses[(i + 1) % 12]
             if end_angle < start_angle: end_angle += 360
 
+            # Place number in the middle of the house
             mid_angle_deg = (start_angle + end_angle) / 2 + angle_offset
             angle_rad = math.radians(mid_angle_deg)
 
@@ -443,16 +464,14 @@ class ChartDrawingWidget(QFrame):
             y = center.y() + radius * math.sin(angle_rad)
 
             text = str(i + 1)
+            painter.save()
+            painter.translate(x, y)
+            painter.scale(1, -1) # Flip text to be upright
+
             font_metrics = QFontMetrics(house_font)
             text_width = font_metrics.horizontalAdvance(text)
             text_height = font_metrics.height()
-            point = QPointF(x - text_width / 2, y + text_height / 4)
 
-            # Since the whole canvas is flipped, we need to flip the text back
-            # to make it readable.
-            painter.save()
-            painter.translate(point)
-            painter.scale(1, -1)
             self._draw_glow_text(painter, QPointF(-text_width / 2, text_height / 4), text, house_font, color)
             painter.restore()
 

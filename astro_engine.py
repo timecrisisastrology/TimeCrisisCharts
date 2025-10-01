@@ -136,7 +136,7 @@ def _find_return_jd(natal_lon, body_id, start_jd):
             break
     return t_jd
 
-def calculate_solar_return(birth_date, target_year, latitude, longitude):
+def calculate_solar_return(birth_date, target_year, latitude, longitude, house_system=b'P'):
     """Calculates the Solar Return chart for a given year and location."""
     natal_jd_ut = swe.utc_to_jd(birth_date.year, birth_date.month, birth_date.day, birth_date.hour, birth_date.minute, birth_date.second, 1)[1]
     natal_sun_lon = swe.calc_ut(natal_jd_ut, swe.SUN, swe.FLG_SWIEPH)[0][0]
@@ -152,7 +152,7 @@ def calculate_solar_return(birth_date, target_year, latitude, longitude):
     microsecond = int((second_float - second) * 1_000_000)
     return_date = datetime(int(year), int(month), int(day), int(hour), int(minute), second, microsecond, tzinfo=timezone.utc)
 
-    return_planets, return_houses = calculate_natal_chart(return_date, latitude, longitude)
+    return_planets, return_houses = calculate_natal_chart(return_date, latitude, longitude, house_system=house_system)
     return return_planets, return_houses, return_date
 
 def calculate_lunar_return(birth_date, target_date, latitude, longitude):
@@ -186,12 +186,18 @@ def get_zodiac_sign_short(degree):
     """Returns the 3-letter abbreviation for a zodiac sign."""
     return get_zodiac_sign(degree)[:3]
 
-def format_longitude(longitude):
+def format_longitude(longitude, show_sign=True):
     """Formats a decimal degree into a string like '15° Tau 33''."""
     sign = get_zodiac_sign_short(longitude)
     deg_in_sign = int(longitude % 30)
+    minutes = int((longitude - (int(longitude) // 30 * 30) - deg_in_sign) * 60)
     minutes = int((longitude - int(longitude)) * 60)
-    return f"{deg_in_sign}° {sign} {minutes}'"
+
+    if show_sign:
+        return f"{deg_in_sign}° {sign} {minutes}'"
+    else:
+        # The user wants "degrees°minutes'" format, e.g. "15°33'"
+        return f"{deg_in_sign}°{minutes:02d}'"
 
 def get_house_ruler(house_cusp_degree):
     """Returns the ruling planet for a house based on its cusp sign using traditional rulers."""
