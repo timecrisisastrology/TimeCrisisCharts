@@ -81,10 +81,39 @@ class MainWindow(QMainWindow):
 
     def _setup_ui(self):
         """Initializes all user interface components."""
+        # Apply global styles for QComboBox to match the application's theme.
+        # This ensures that the AM/PM and House System dropdowns are branded.
+        self.setStyleSheet("""
+            QComboBox {
+                color: #94EBFF;
+                font-family: "Titillium Web";
+                font-size: 10pt;
+                background-color: #200334;
+                border: 1px solid #3DF6FF;
+                border-radius: 5px;
+                padding: 5px;
+            }
+            QComboBox:hover {
+                background-color: #3DF6FF;
+                color: #200334;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #200334;
+                border: 1px solid #3DF6FF;
+                selection-background-color: #3DF6FF;
+                selection-color: #200334;
+                color: #94EBFF;
+                outline: 0px;
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+        """)
+
         palette = self.palette()
         palette.setColor(QPalette.ColorRole.Window, QColor("#200334"))
         self.setPalette(palette)
-        
+
         main_widget = QWidget()
         self.grid_layout = QGridLayout(main_widget)
         self.grid_layout.setContentsMargins(10, 20, 10, 10)
