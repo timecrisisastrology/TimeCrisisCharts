@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 
 # Set the Qt platform plugin to 'offscreen' to allow the application to run
 # in a headless environment for testing and screenshot generation.
-os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+# os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QVBoxLayout, QHBoxLayout, QLineEdit, QStackedWidget, QFileDialog
 from PyQt6.QtCore import QTimer
@@ -378,8 +378,6 @@ if __name__ == "__main__":
     window = MainWindow()
     window.show()
 
-    # Use a QTimer to save a screenshot after a short delay and then exit.
-    # This is for automated verification in a headless environment.
-    QTimer.singleShot(1500, window.save_screenshot_and_exit) # 1.5 second delay
+    # The QTimer line was removed by Jules to ensure the application runs interactively.
 
     sys.exit(app.exec())
