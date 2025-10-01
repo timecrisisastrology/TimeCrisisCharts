@@ -282,28 +282,19 @@ class ChartDrawingWidget(QFrame):
         label_font = QFont("Titillium Web", 8)
 
         # --- 1. Group close planets to prevent overlap ---
-        # Sort planets by longitude to make clustering easier.
         sorted_planets = sorted(planets.items(), key=lambda item: item[1][0])
         clusters = []
-        if not sorted_planets:
-            return
+        if not sorted_planets: return
 
-        # Start the first cluster with the first planet.
         current_cluster = [sorted_planets[0]]
-
-        # Define the threshold for what's considered "close."
-        # This value was chosen as it provides good visual separation without
-        # distorting the chart too much.
-        CONJUNCTION_THRESHOLD = 8.0
+        # Increased threshold to better group visually close planets.
+        CONJUNCTION_THRESHOLD = 12.0
 
         for i in range(1, len(sorted_planets)):
             prev_lon = current_cluster[-1][1][0]
             curr_lon = sorted_planets[i][1][0]
-
-            # Calculate the distance, handling the 360->0 degree wrap-around.
             distance = abs(curr_lon - prev_lon)
             distance = min(distance, 360 - distance)
-
             if distance < CONJUNCTION_THRESHOLD:
                 current_cluster.append(sorted_planets[i])
             else:
@@ -317,9 +308,7 @@ class ChartDrawingWidget(QFrame):
             is_cluster = num_planets_in_cluster > 1
 
             if is_cluster:
-                # Calculate the average longitude for the cluster to center it.
                 longitudes = [p[1][0] for p in cluster]
-                # Handle wrap-around for average calculation.
                 if max(longitudes) - min(longitudes) > 180:
                     avg_lon = (sum(l + 360 if l < 180 else l for l in longitudes) / num_planets_in_cluster) % 360
                 else:
@@ -328,18 +317,14 @@ class ChartDrawingWidget(QFrame):
             for i, (name, position_data) in enumerate(cluster):
                 longitude = position_data[0]
 
-                # --- Calculate adjusted position for clustered planets ---
                 if is_cluster:
-                    # Spread planets out from the center of the cluster.
-                    # This creates a visually pleasing arc of planets.
-                    angle_step = 4  # Degrees between planets in a cluster.
+                    # Increased angle_step for more separation.
+                    angle_step = 6
                     start_angle = avg_lon - (angle_step * (num_planets_in_cluster - 1) / 2)
                     current_angle = start_angle + i * angle_step
-
-                    # Alternate radius to prevent labels from overlapping.
-                    current_radius = radius * (1 - 0.05 * (i % 2))
+                    # Increased radial staggering for better label visibility.
+                    current_radius = radius * (1 - 0.10 * (i % 2))
                 else:
-                    # If not in a cluster, use the original position.
                     current_angle = longitude
                     current_radius = radius
 
@@ -353,7 +338,7 @@ class ChartDrawingWidget(QFrame):
 
                 painter.save()
                 painter.translate(glyph_x, glyph_y)
-                painter.scale(1, -1) # Flip text back to be upright
+                painter.scale(1, -1)
                 font_metrics = QFontMetrics(planet_font)
                 text_width = font_metrics.horizontalAdvance(glyph)
                 text_height = font_metrics.height()
@@ -361,15 +346,15 @@ class ChartDrawingWidget(QFrame):
                 painter.restore()
 
                 # --- Draw Position Label ---
-                # Adjust label radius based on the planet's radius to maintain distance.
-                label_radius = current_radius * 1.15
+                # Increased label radius to give more space.
+                label_radius = current_radius * 1.20
                 label_x = center.x() + label_radius * math.cos(angle_rad)
                 label_y = center.y() + label_radius * math.sin(angle_rad)
                 label_text = format_longitude(longitude)
 
                 painter.save()
                 painter.translate(label_x, label_y)
-                painter.scale(1, -1) # Flip text back to be upright
+                painter.scale(1, -1)
                 font_metrics = QFontMetrics(label_font)
                 text_width = font_metrics.horizontalAdvance(label_text)
                 text_height = font_metrics.height()
@@ -377,14 +362,19 @@ class ChartDrawingWidget(QFrame):
                 painter.restore()
 
     def _draw_cusp_labels(self, painter, center, radius, color, angle_offset):
-        """Helper method to draw the degree labels for each house cusp, rotated along the wheel."""
+        """
+        Helper method to draw the degree labels for each house cusp, rotated along the wheel.
+        Includes collision avoidance to prevent labels from overlapping.
+        """
         if not self.display_houses: return
         label_font = QFont("Titillium Web", 12); label_font.setBold(True)
+        font_metrics = QFontMetrics(label_font)
+        drawn_label_rects = []
+
         def format_degree(deg):
             deg %= 360
             deg_in_sign = deg % 30
             minutes = (deg_in_sign - int(deg_in_sign)) * 60
-            # Return only the degree and minute, without the zodiac symbol
             return f"{int(deg_in_sign)}° {int(minutes)}'"
 
         for i, cusp_deg in enumerate(self.display_houses):
@@ -392,20 +382,47 @@ class ChartDrawingWidget(QFrame):
             if i == 0: text = f"ASC = {text}"
 
             angle_with_offset = cusp_deg + angle_offset
-            rotation_angle = angle_with_offset - 90
             label_radius = radius * 1.07
-            angle_rad = math.radians(angle_with_offset)
-            x = center.x() + label_radius * math.cos(angle_rad)
-            y = center.y() + label_radius * math.sin(angle_rad)
 
+            # --- Collision Avoidance Loop ---
+            while True:
+                angle_rad = math.radians(angle_with_offset)
+                x = center.x() + label_radius * math.cos(angle_rad)
+                y = center.y() + label_radius * math.sin(angle_rad)
+
+                # Get the bounding rectangle of the text *before* rotation
+                text_width = font_metrics.horizontalAdvance(text)
+                text_height = font_metrics.height()
+
+                # Create a transformed bounding box for collision detection
+                transform = QTransform()
+                transform.translate(x, y)
+                rotation_angle = angle_with_offset - 90
+                if 90 < angle_with_offset % 360 < 270:
+                    transform.rotate(-(rotation_angle + 180))
+                else:
+                    transform.rotate(-rotation_angle)
+
+                # Define the rectangle centered around the origin
+                untransformed_rect = QRectF(-text_width / 2, -text_height / 2, text_width, text_height)
+                current_rect = transform.mapRect(untransformed_rect)
+
+                # Check for intersections with already drawn labels
+                is_overlapping = any(current_rect.intersects(r) for r in drawn_label_rects)
+
+                if not is_overlapping:
+                    drawn_label_rects.append(current_rect)
+                    break
+
+                # If overlapping, push the label further out radially
+                label_radius += 5
+
+            # --- Draw the label at the final, non-overlapping position ---
             painter.save()
             painter.translate(x, y)
-            # Text needs to be readable, so we must flip it back upright in the new coordinate system
             painter.scale(1, -1)
+            rotation_angle = angle_with_offset - 90
             painter.rotate(-(rotation_angle + 180 if 90 < angle_with_offset % 360 < 270 else rotation_angle))
-
-            font_metrics = QFontMetrics(label_font)
-            text_width = font_metrics.horizontalAdvance(text)
             draw_point = QPointF(-text_width / 2, font_metrics.height() / 4)
             self._draw_glow_text(painter, draw_point, text, label_font, color)
             painter.restore()
