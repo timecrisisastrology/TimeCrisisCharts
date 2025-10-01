@@ -125,7 +125,8 @@ class ChartDrawingWidget(QFrame):
         # --- Planet Glyphs (using correct Unicode characters for EnigmaAstrology2) ---
         self.planet_glyphs = {
             'Sun': '\uE200', 'Moon': '\uE201', 'Mercury': '\uE202', 'Venus': '\uE203', 'Mars': '\uE205',
-            'Jupiter': '\uE206', 'Saturn': '\uE207', 'Uranus': '\uE208', 'Neptune': '\uE209', 'Pluto': '\uE210'
+            'Jupiter': '\uE206', 'Saturn': '\uE207', 'Uranus': '\uE208', 'Neptune': '\uE209', 'Pluto': '\uE210',
+            'ASC': '\uE500', 'MC': '\uE501'
         }
 
         # --- Neon Color Definitions ---
@@ -140,6 +141,7 @@ class ChartDrawingWidget(QFrame):
             'Moon': neon_blue, 'Neptune': neon_blue, 'Pluto': neon_blue,   # Water
             'Mercury': neon_yellow, 'Uranus': neon_yellow,                 # Air
             'Venus': neon_green, 'Saturn': neon_green,                     # Earth
+            'ASC': neon_blue, 'MC': neon_pink,                             # Angles
         }
 
         # --- NEW: Elemental colors for Zodiac signs ---

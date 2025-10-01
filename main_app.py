@@ -444,22 +444,28 @@ class MainWindow(QMainWindow):
         
         elif self.current_chart_type == 'transit':
             transit_planets = calculate_transits(self.current_date)
-            # --- NEW: Calculate transit houses for the relocated position ---
+            # Calculate transiting houses for the relocated position to find ASC/MC
             jd_utc = swe.utc_to_jd(self.current_date.year, self.current_date.month, self.current_date.day, self.current_date.hour, self.current_date.minute, self.current_date.second, 1)[1]
-            transit_houses = swe.houses(jd_utc, self.reloc_lat, self.reloc_lon, house_system_code)[0]
+            transit_angles = swe.houses(jd_utc, self.reloc_lat, self.reloc_lon, house_system_code)[1]
+            transit_planets['ASC'] = (transit_angles[0], 0.0) # Add Ascendant
+            transit_planets['MC'] = (transit_angles[1], 0.0)  # Add Midheaven
+            # Always display the natal houses
             self.chart_area.set_chart_data(
-                self.natal_planets, self.natal_houses, [], outer_planets=transit_planets, display_houses=transit_houses
+                self.natal_planets, self.natal_houses, [], outer_planets=transit_planets, display_houses=self.natal_houses
             )
-        
+
         elif self.current_chart_type == 'progression':
             progressed_planets = calculate_secondary_progressions(self.sample_birth_date, self.current_date)
-            # --- NEW: Calculate progressed houses for the relocated position ---
+            # Calculate progressed houses for the relocated position to find ASC/MC
             days_offset = (self.current_date.date() - self.sample_birth_date.date()).days
             progression_date = self.sample_birth_date + timedelta(days=days_offset)
             jd_utc = swe.utc_to_jd(progression_date.year, progression_date.month, progression_date.day, progression_date.hour, progression_date.minute, progression_date.second, 1)[1]
-            progressed_houses = swe.houses(jd_utc, self.reloc_lat, self.reloc_lon, house_system_code)[0]
+            progressed_angles = swe.houses(jd_utc, self.reloc_lat, self.reloc_lon, house_system_code)[1]
+            progressed_planets['ASC'] = (progressed_angles[0], 0.0) # Add Ascendant
+            progressed_planets['MC'] = (progressed_angles[1], 0.0)  # Add Midheaven
+            # Always display the natal houses
             self.chart_area.set_chart_data(
-                self.natal_planets, self.natal_houses, [], outer_planets=progressed_planets, display_houses=progressed_houses
+                self.natal_planets, self.natal_houses, [], outer_planets=progressed_planets, display_houses=self.natal_houses
             )
 
         elif self.current_chart_type == 'solar_return':
