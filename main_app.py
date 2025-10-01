@@ -10,7 +10,7 @@ from timezonefinder import TimezoneFinder
 # in a headless environment for testing and screenshot generation.
 # os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 
-from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QVBoxLayout, QHBoxLayout, QLineEdit, QStackedWidget, QFileDialog
+from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QVBoxLayout, QHBoxLayout, QLineEdit, QStackedWidget, QFileDialog, QComboBox, QMessageBox
 from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QPalette, QColor, QFontDatabase
 from widgets import InfoPanel, StyledButton, ChartDrawingWidget
@@ -104,12 +104,22 @@ class MainWindow(QMainWindow):
         self.birth_date_input = QLineEdit("1989-05-15")
         self.birth_time_input = QLineEdit("08:30")
         self.location_input = QLineEdit("Providence, RI, USA")
+        self.house_system_input = QComboBox()
+
+        # --- House System Options ---
+        self.house_systems = {
+            "Placidus": "P", "Koch": "K", "Regiomontanus": "R",
+            "Campanus": "C", "Equal": "E", "Whole Sign": "W"
+        }
+        self.house_system_input.addItems(self.house_systems.keys())
+
 
         natal_data = {
             "Name": self.name_input,
             "Birth Date (YYYY-MM-DD)": self.birth_date_input,
             "Birth Time (HH:MM)": self.birth_time_input,
             "Location": self.location_input,
+            "House System": self.house_system_input,
         }
 
         # This will be a new VBox layout to hold the panel and the button
@@ -262,14 +272,14 @@ class MainWindow(QMainWindow):
             # 3. Geocode the location to get lat, lon, and timezone
             location = geolocator.geocode(location_str)
             if not location:
-                print(f"Error: Could not geocode location '{location_str}'.")
+                QMessageBox.critical(self, "Error", f"Could not find location: '{location_str}'. Please check the spelling or try a different format (e.g., 'City, State, Country').")
                 return
 
             lat = location.latitude
             lon = location.longitude
             tz_name = tf.timezone_at(lng=lon, lat=lat)
             if not tz_name:
-                print(f"Error: Could not find timezone for {lat}, {lon}.")
+                QMessageBox.critical(self, "Error", f"Could not determine the timezone for the location: {location.address}.")
                 return
 
             local_tz = pytz.timezone(tz_name)
@@ -281,7 +291,9 @@ class MainWindow(QMainWindow):
             birth_datetime_utc = local_datetime.astimezone(timezone.utc)
 
             # 5. Recalculate the natal chart and aspects
-            self.natal_planets, self.natal_houses = calculate_natal_chart(birth_datetime_utc, lat, lon)
+            selected_house_system_name = self.house_system_input.currentText()
+            house_system_code = self.house_systems[selected_house_system_name]
+            self.natal_planets, self.natal_houses = calculate_natal_chart(birth_datetime_utc, lat, lon, house_system=bytes(house_system_code, 'utf-8'))
             self.natal_aspects = calculate_aspects(self.natal_planets, 7) # Using a default orb of 7
 
             # Store the new birth date for use in other calculations
@@ -291,12 +303,10 @@ class MainWindow(QMainWindow):
             print(f"Successfully generated new chart for {name} in {location.address}.")
             self.update_chart()
 
-        except ValueError as e:
-            # Handle cases where date/time format is wrong
-            print(f"Error parsing input data: {e}")
+        except ValueError:
+            QMessageBox.critical(self, "Error", "Invalid Date or Time Format. Please use YYYY-MM-DD for date and HH:MM for time.")
         except Exception as e:
-            # Catch any other unexpected errors
-            print(f"An unexpected error occurred: {e}")
+            QMessageBox.critical(self, "An Unexpected Error Occurred", f"An unexpected error occurred: {e}")
 
     def handle_save_chart(self):
         """
