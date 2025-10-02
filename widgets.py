@@ -182,52 +182,61 @@ class ChartDrawingWidget(QFrame):
     def _calculate_rings(self, base_radius, is_biwheel):
         """
         Defines the precise inner and outer boundaries for all concentric data rings.
-        This is the core of the professional layout system.
+        This is the core of the professional layout system. It uses fixed-width lanes
+        to guarantee separation and prevent overlaps.
         """
         rings = {}
-        # The outermost ring for the zodiac glyphs.
-        rings['zodiac'] = {'outer': base_radius, 'inner': base_radius * 0.85}
+        # Define fixed widths for each lane. These are pixel values.
+        zodiac_width = 40
+        cusp_label_width = 30
+        planet_glyph_width = 35
+        planet_info_width = 30
+        separator_width = 8 # Gutter between wheels
+        house_number_width = 25
 
-        # The ring just outside the zodiac for cusp degree labels.
-        rings['cusp_labels'] = {'outer': base_radius * 1.15, 'inner': base_radius * 1.02}
+        # Work from the outside in, starting from the base_radius.
+        current_outer = base_radius
+        rings['zodiac'] = {'outer': current_outer, 'inner': current_outer - zodiac_width}
+
+        # The ring for cusp degree labels sits *outside* the main zodiac ring.
+        rings['cusp_labels'] = {'outer': base_radius + cusp_label_width, 'inner': base_radius}
+
+        # Set the boundary for the inner chart elements, starting from inside the zodiac.
+        current_outer = rings['zodiac']['inner']
 
         if is_biwheel:
             # Layout for a two-wheel chart (e.g., Natal + Transits)
-            # Define proportions for each ring to divide the available space.
-            total_planet_space = rings['zodiac']['inner'] - (base_radius * 0.30)
-            outer_glyph_size = total_planet_space * 0.25
-            outer_info_size = total_planet_space * 0.20
-            separator_size = total_planet_space * 0.10 # Gutter
-            inner_glyph_size = total_planet_space * 0.25
-            inner_info_size = total_planet_space * 0.20
+            rings['outer_planets_glyphs'] = {'outer': current_outer, 'inner': current_outer - planet_glyph_width}
+            current_outer -= planet_glyph_width
+            rings['outer_planets_info'] = {'outer': current_outer, 'inner': current_outer - planet_info_width}
+            current_outer -= planet_info_width
 
-            # Work from the outside in.
-            current_outer = rings['zodiac']['inner']
-            rings['outer_planets_glyphs'] = {'outer': current_outer, 'inner': current_outer - outer_glyph_size}
-            current_outer -= outer_glyph_size
-            rings['outer_planets_info'] = {'outer': current_outer, 'inner': current_outer - outer_info_size}
-            current_outer -= outer_info_size
-            rings['separator'] = {'outer': current_outer, 'inner': current_outer - separator_size}
-            current_outer -= separator_size
-            rings['inner_planets_glyphs'] = {'outer': current_outer, 'inner': current_outer - inner_glyph_size}
-            current_outer -= inner_glyph_size
-            rings['inner_planets_info'] = {'outer': current_outer, 'inner': current_outer - inner_info_size}
-            current_outer -= inner_info_size
-            rings['house_numbers'] = {'outer': current_outer, 'inner': current_outer * 0.85}
-            rings['aspect_grid'] = {'outer': rings['house_numbers']['inner'], 'inner': 0}
+            rings['separator'] = {'outer': current_outer, 'inner': current_outer - separator_width}
+            current_outer -= separator_width
+
+            rings['inner_planets_glyphs'] = {'outer': current_outer, 'inner': current_outer - planet_glyph_width}
+            current_outer -= planet_glyph_width
+            rings['inner_planets_info'] = {'outer': current_outer, 'inner': current_outer - planet_info_width}
+            current_outer -= planet_info_width
+
+            rings['house_numbers'] = {'outer': current_outer, 'inner': current_outer - house_number_width}
+            current_outer -= house_number_width
         else:
             # Layout for a single-wheel chart (e.g., Natal only)
-            total_planet_space = rings['zodiac']['inner'] - (base_radius * 0.35)
-            glyph_size = total_planet_space * 0.55
-            info_size = total_planet_space * 0.45
+            # Give more space for a single wheel.
+            single_glyph_width = 50
+            single_info_width = 40
 
-            current_outer = rings['zodiac']['inner']
-            rings['inner_planets_glyphs'] = {'outer': current_outer, 'inner': current_outer - glyph_size}
-            current_outer -= glyph_size
-            rings['inner_planets_info'] = {'outer': current_outer, 'inner': current_outer - info_size}
-            current_outer -= info_size
-            rings['house_numbers'] = {'outer': current_outer, 'inner': current_outer * 0.85}
-            rings['aspect_grid'] = {'outer': rings['house_numbers']['inner'], 'inner': 0}
+            rings['inner_planets_glyphs'] = {'outer': current_outer, 'inner': current_outer - single_glyph_width}
+            current_outer -= single_glyph_width
+            rings['inner_planets_info'] = {'outer': current_outer, 'inner': current_outer - single_info_width}
+            current_outer -= single_info_width
+
+            rings['house_numbers'] = {'outer': current_outer, 'inner': current_outer - house_number_width}
+            current_outer -= house_number_width
+
+        # The aspect grid fills the remaining space in the center.
+        rings['aspect_grid'] = {'outer': current_outer, 'inner': 0}
 
         return rings
 
@@ -330,7 +339,7 @@ class ChartDrawingWidget(QFrame):
         sorted_planets = sorted(planets.items(), key=lambda item: item[1][0])
         num_planets = len(sorted_planets)
         adj = [[] for _ in range(num_planets)]
-        CONJUNCTION_THRESHOLD = 8.0
+        CONJUNCTION_THRESHOLD = 12.0
 
         for i in range(num_planets):
             for j in range(i + 1, num_planets):
