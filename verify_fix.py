@@ -1,7 +1,7 @@
 import sys
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QTimer
-from main_app import MainWindow
+from main_app import MainWindow, load_fonts
 
 app = None
 window = None
@@ -29,6 +29,10 @@ def create_screenshot_and_exit():
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     try:
+        # CRITICAL: Load custom fonts before creating the main window
+        # to ensure astrological glyphs are rendered correctly in the screenshot.
+        load_fonts()
+
         window = MainWindow()
         window.show() # Show the window to make it available for grabbing
         print("MainWindow created successfully. Waiting to take screenshot...")
