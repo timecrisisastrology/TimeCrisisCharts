@@ -308,7 +308,7 @@ class ChartDrawingWidget(QFrame):
         sorted_planets = sorted(planets.items(), key=lambda item: item[1][0])
         num_planets = len(sorted_planets)
         adj = [[] for _ in range(num_planets)]
-        CONJUNCTION_THRESHOLD = 8.0 # Degrees within which planets are considered "close"
+        CONJUNCTION_THRESHOLD = 6.0 # Degrees within which planets are considered "close"
 
         for i in range(num_planets):
             for j in range(i + 1, num_planets):
@@ -337,25 +337,32 @@ class ChartDrawingWidget(QFrame):
                 # Sort cluster internally by longitude before adding
                 clusters.append(sorted(current_cluster, key=lambda item: item[1][0]))
 
-        # --- 2. Drawing with Radial Displacement ---
-        RADIAL_OFFSET_STEP = 0.08 # Percentage of radius to offset each planet in a cluster
+        # --- 2. Drawing with Professional Radial Displacement (Staggering) ---
+        PLANET_RING_THICKNESS_FACTOR = 0.15 # Defines the 'lane' width for planets
+
         for cluster in clusters:
             num_in_cluster = len(cluster)
-            is_cluster = num_in_cluster > 1
+
+            # Generate radial offsets for the cluster
+            offsets = []
+            if num_in_cluster > 1:
+                max_offset = (radius * PLANET_RING_THICKNESS_FACTOR) / 2
+                # Create evenly spaced offsets from inner to outer edge
+                # For n=3, this creates [-max, 0, max]. For n=2, [-max, max].
+                step = (2 * max_offset) / (num_in_cluster - 1)
+                offsets = [-max_offset + (step * i) for i in range(num_in_cluster)]
+                # Per user spec, first planet by degree should be outermost, so reverse.
+                offsets.reverse()
 
             for i, (name, position_data) in enumerate(cluster):
                 longitude = position_data[0]
                 current_radius = radius
-                display_angle = longitude # Default to exact position
 
-                if is_cluster:
-                    # Apply radial displacement (staggering)
-                    # This creates clear visual lanes for each planet in the cluster
-                    offset_direction = 1 if (i % 2 == 0) else -1
-                    offset_magnitude = math.ceil(i / 2.0)
-                    current_radius = radius * (1 + offset_direction * offset_magnitude * RADIAL_OFFSET_STEP)
+                # Apply the calculated radial offset if the planet is in a cluster
+                if num_in_cluster > 1:
+                    current_radius += offsets[i]
 
-                angle_rad = math.radians(display_angle + angle_offset)
+                angle_rad = math.radians(longitude + angle_offset)
                 planet_color = self.planet_colors.get(name, QColor("white"))
 
                 # --- Draw Planet Glyph ---
@@ -369,16 +376,13 @@ class ChartDrawingWidget(QFrame):
 
                 painter.save()
                 painter.translate(glyph_x, glyph_y)
-                painter.scale(1, -1) # Flip Y-axis back for upright text
+                painter.scale(1, -1)
                 self._draw_glow_text(painter, QPointF(-glyph_width / 2, glyph_height / 4), glyph, planet_font, planet_color)
                 painter.restore()
 
                 # --- Draw Position Label ---
-                # Retrograde symbol 'Rx' is added if the planet's speed is negative
                 is_retrograde = position_data[1] < 0
-                retro_symbol = " \u211E" if is_retrograde else "" # Unicode for Rx
-
-                # Format label as a single, clean line: "15° ♈ 45'"
+                retro_symbol = " \u211E" if is_retrograde else ""
                 label_text = f"{format_longitude(longitude, show_sign=True)}{retro_symbol}"
 
                 fm_label = QFontMetrics(label_font)
@@ -386,16 +390,11 @@ class ChartDrawingWidget(QFrame):
                 label_height = fm_label.height()
 
                 # --- Position the label relative to the glyph ---
-                # The label is placed radially, either inside or outside the glyph's ring
-                gap = 5 # Gap between glyph and label
-                if wheel_type == 'inner':
-                    # Inner wheel: labels are inside the planet ring
-                    label_radius = current_radius - (glyph_height / 2) - gap
-                    text_anchor_offset = -label_width # Draw left from the point
-                else: # 'outer'
-                    # Outer wheel: labels are outside the planet ring
-                    label_radius = current_radius + (glyph_height / 2) + gap
-                    text_anchor_offset = 0 # Draw right from the point
+                # CRITICAL: For BOTH inner and outer wheels, labels are now drawn
+                # INSIDE the planet's ring to prevent any overlap with other circles.
+                gap = 5
+                label_radius = current_radius - (glyph_height / 2) - gap
+                text_anchor_offset = -label_width # Anchor text to the right
 
                 label_x = center.x() + label_radius * math.cos(angle_rad)
                 label_y = center.y() + label_radius * math.sin(angle_rad)
@@ -405,7 +404,7 @@ class ChartDrawingWidget(QFrame):
                 painter.scale(1, -1) # Flip Y-axis for upright text
 
                 # --- Rotate canvas to align text radially ---
-                effective_angle = display_angle + angle_offset
+                effective_angle = longitude + angle_offset
                 painter.rotate(-effective_angle)
 
                 # Further rotate text on the left side of the chart to ensure it's never upside down
