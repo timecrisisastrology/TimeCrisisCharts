@@ -261,10 +261,12 @@ class ChartDrawingWidget(QFrame):
 
         # 5. Draw planet glyphs
         if self.outer_planets:
-            self._draw_planets(painter, center, radii["inner_planets_bi"], self.planets, angle_offset)
-            self._draw_planets(painter, center, radii["outer_planets"], self.outer_planets, angle_offset)
+            # For bi-wheel charts, specify the wheel type for correct label placement.
+            self._draw_planets(painter, center, radii["inner_planets_bi"], self.planets, angle_offset, wheel_type='inner')
+            self._draw_planets(painter, center, radii["outer_planets"], self.outer_planets, angle_offset, wheel_type='outer')
         else:
-            self._draw_planets(painter, center, radii["inner_planets_single"], self.planets, angle_offset)
+            # For a single wheel, all planets are considered 'inner'.
+            self._draw_planets(painter, center, radii["inner_planets_single"], self.planets, angle_offset, wheel_type='inner')
 
         # 6. Draw aspect lines
         aspect_radius = radii["aspect_lines"]
@@ -289,103 +291,132 @@ class ChartDrawingWidget(QFrame):
                     p2_y = center.y() + aspect_radius * math.sin(p2_rad)
                     painter.drawLine(QPointF(p1_x, p1_y), QPointF(p2_x, p2_y))
 
-    def _draw_planets(self, painter, center, radius, planets, angle_offset):
+    def _draw_planets(self, painter, center, radius, planets, angle_offset, wheel_type='inner'):
         """
-        Draws planet glyphs and their corresponding degree labels, with lines
-        pointing towards the center, similar to the user's example.
+        Draws planet glyphs and their labels with advanced collision avoidance.
+        - Uses graph-based clustering to handle complex stelliums.
+        - Uses multi-level radial displacement ("staggering") to resolve overlaps.
+        - Orients labels radially and adjusts placement for inner vs. outer wheels.
         """
-        planet_font = QFont(self.astro_font_name, 24)
+        planet_font = QFont(self.astro_font_name, 20)
         planet_font.setStyleStrategy(QFont.StyleStrategy.NoFontMerging)
-        label_font = QFont("Titillium Web", 10) # Increased font size for clarity
+        label_font = QFont("Titillium Web", 9)
 
+        if not planets: return
+
+        # --- 1. Graph-based Clustering ---
         sorted_planets = sorted(planets.items(), key=lambda item: item[1][0])
+        num_planets = len(sorted_planets)
+        adj = [[] for _ in range(num_planets)]
+        CONJUNCTION_THRESHOLD = 8.0 # Degrees within which planets are considered "close"
+
+        for i in range(num_planets):
+            for j in range(i + 1, num_planets):
+                p1_lon = sorted_planets[i][1][0]
+                p2_lon = sorted_planets[j][1][0]
+                distance = abs(p1_lon - p2_lon)
+                distance = min(distance, 360 - distance) # Account for wrapping around 0° Aries
+                if distance < CONJUNCTION_THRESHOLD:
+                    adj[i].append(j)
+                    adj[j].append(i)
+
+        visited = [False] * num_planets
         clusters = []
-        if not sorted_planets: return
+        for i in range(num_planets):
+            if not visited[i]:
+                current_cluster = []
+                q = [i]
+                visited[i] = True
+                while q:
+                    u = q.pop(0)
+                    current_cluster.append(sorted_planets[u])
+                    for v in adj[u]:
+                        if not visited[v]:
+                            visited[v] = True
+                            q.append(v)
+                # Sort cluster internally by longitude before adding
+                clusters.append(sorted(current_cluster, key=lambda item: item[1][0]))
 
-        current_cluster = [sorted_planets[0]]
-        CONJUNCTION_THRESHOLD = 12.0
-
-        for i in range(1, len(sorted_planets)):
-            prev_lon = current_cluster[-1][1][0]
-            curr_lon = sorted_planets[i][1][0]
-            distance = abs(curr_lon - prev_lon)
-            distance = min(distance, 360 - distance)
-            if distance < CONJUNCTION_THRESHOLD:
-                current_cluster.append(sorted_planets[i])
-            else:
-                clusters.append(current_cluster)
-                current_cluster = [sorted_planets[i]]
-        clusters.append(current_cluster)
-
+        # --- 2. Drawing with Radial Displacement ---
+        RADIAL_OFFSET_STEP = 0.08 # Percentage of radius to offset each planet in a cluster
         for cluster in clusters:
-            num_planets_in_cluster = len(cluster)
-            is_cluster = num_planets_in_cluster > 1
-
-            if is_cluster:
-                longitudes = [p[1][0] for p in cluster]
-                avg_lon = sum(longitudes) / num_planets_in_cluster
-                if max(longitudes) - min(longitudes) > 180: # Handle wrap-around for avg
-                    avg_lon = (sum(l + 360 if l < 180 else l for l in longitudes) / num_planets_in_cluster) % 360
+            num_in_cluster = len(cluster)
+            is_cluster = num_in_cluster > 1
 
             for i, (name, position_data) in enumerate(cluster):
                 longitude = position_data[0]
+                current_radius = radius
+                display_angle = longitude # Default to exact position
 
                 if is_cluster:
-                    angle_step = 6
-                    start_angle = avg_lon - (angle_step * (num_planets_in_cluster - 1) / 2)
-                    current_angle = start_angle + i * angle_step
-                    current_radius = radius * (1 - 0.12 * (i % 2)) # Stagger radius
-                else:
-                    current_angle = longitude
-                    current_radius = radius
+                    # Apply radial displacement (staggering)
+                    # This creates clear visual lanes for each planet in the cluster
+                    offset_direction = 1 if (i % 2 == 0) else -1
+                    offset_magnitude = math.ceil(i / 2.0)
+                    current_radius = radius * (1 + offset_direction * offset_magnitude * RADIAL_OFFSET_STEP)
 
-                angle_rad = math.radians(current_angle + angle_offset)
+                angle_rad = math.radians(display_angle + angle_offset)
                 planet_color = self.planet_colors.get(name, QColor("white"))
 
                 # --- Draw Planet Glyph ---
+                glyph = self.planet_glyphs.get(name, '?')
+                fm_glyph = QFontMetrics(planet_font)
+                glyph_width = fm_glyph.horizontalAdvance(glyph)
+                glyph_height = fm_glyph.height()
+
                 glyph_x = center.x() + current_radius * math.cos(angle_rad)
                 glyph_y = center.y() + current_radius * math.sin(angle_rad)
-                glyph = self.planet_glyphs.get(name, '?')
+
                 painter.save()
                 painter.translate(glyph_x, glyph_y)
-                painter.scale(1, -1)
-                font_metrics = QFontMetrics(planet_font)
-                self._draw_glow_text(painter, QPointF(-font_metrics.horizontalAdvance(glyph) / 2, font_metrics.height() / 4), glyph, planet_font, planet_color)
+                painter.scale(1, -1) # Flip Y-axis back for upright text
+                self._draw_glow_text(painter, QPointF(-glyph_width / 2, glyph_height / 4), glyph, planet_font, planet_color)
                 painter.restore()
 
                 # --- Draw Position Label ---
-                # The label_radius is now calculated to be much closer to the planet glyph
-                # to prevent it from crossing into other rings on the chart.
-                label_radius = current_radius * 0.95
-                label_text = f"{format_longitude(longitude, show_sign=False)}\n{get_zodiac_sign(longitude)[:3]}"
+                # Retrograde symbol 'Rx' is added if the planet's speed is negative
+                is_retrograde = position_data[1] < 0
+                retro_symbol = " \u211E" if is_retrograde else "" # Unicode for Rx
 
-                font_metrics = QFontMetrics(label_font)
-                # Use a QRect for bounding to handle multi-line text correctly
-                text_rect = font_metrics.boundingRect(QRect(0,0,150,50), Qt.AlignmentFlag.AlignCenter, label_text)
+                # Format label as a single, clean line: "15° ♈ 45'"
+                label_text = f"{format_longitude(longitude, show_sign=True)}{retro_symbol}"
+
+                fm_label = QFontMetrics(label_font)
+                label_width = fm_label.horizontalAdvance(label_text)
+                label_height = fm_label.height()
+
+                # --- Position the label relative to the glyph ---
+                # The label is placed radially, either inside or outside the glyph's ring
+                gap = 5 # Gap between glyph and label
+                if wheel_type == 'inner':
+                    # Inner wheel: labels are inside the planet ring
+                    label_radius = current_radius - (glyph_height / 2) - gap
+                    text_anchor_offset = -label_width # Draw left from the point
+                else: # 'outer'
+                    # Outer wheel: labels are outside the planet ring
+                    label_radius = current_radius + (glyph_height / 2) + gap
+                    text_anchor_offset = 0 # Draw right from the point
 
                 label_x = center.x() + label_radius * math.cos(angle_rad)
                 label_y = center.y() + label_radius * math.sin(angle_rad)
 
                 painter.save()
                 painter.translate(label_x, label_y)
-                painter.scale(1, -1)
+                painter.scale(1, -1) # Flip Y-axis for upright text
 
-                rotation_angle = current_angle + angle_offset
+                # --- Rotate canvas to align text radially ---
+                effective_angle = display_angle + angle_offset
+                painter.rotate(-effective_angle)
 
-                # Rotate the canvas to align with the planet's angle
-                painter.rotate(-rotation_angle)
-
-                # Adjust for readability based on position
-                if 90 < (rotation_angle + 90) % 360 < 270:
-                    # Left side of the chart: flip text 180 degrees to be readable
+                # Further rotate text on the left side of the chart to ensure it's never upside down
+                if 90 < effective_angle % 360 < 270:
                     painter.rotate(180)
-                    # Draw text starting from the point, moving away (which is inward)
-                    draw_point = QPointF(5, -text_rect.height() / 2 + font_metrics.ascent())
+                    # Adjust anchor point for flipped text
+                    final_draw_point = QPointF(-label_width - text_anchor_offset, label_height / 4)
                 else:
-                    # Right side of the chart: draw text "backwards" from the point
-                    draw_point = QPointF(-text_rect.width() - 5, -text_rect.height() / 2 + font_metrics.ascent())
+                    final_draw_point = QPointF(text_anchor_offset, label_height / 4)
 
-                self._draw_glow_text(painter, draw_point, label_text, label_font, planet_color)
+                self._draw_glow_text(painter, final_draw_point, label_text, label_font, planet_color)
                 painter.restore()
 
     def _draw_cusp_labels(self, painter, center, radius, color, angle_offset):
