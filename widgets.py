@@ -261,12 +261,12 @@ class ChartDrawingWidget(QFrame):
 
         # 5. Draw planet glyphs
         if self.outer_planets:
-            # For bi-wheel charts, specify the wheel type for correct label placement.
-            self._draw_planets(painter, center, radii["inner_planets_bi"], self.planets, angle_offset, wheel_type='inner')
-            self._draw_planets(painter, center, radii["outer_planets"], self.outer_planets, angle_offset, wheel_type='outer')
+            # For bi-wheel charts, specify the exact wheel type for boundary calculations.
+            self._draw_planets(painter, center, radii, self.planets, angle_offset, wheel_type='biwheel_inner')
+            self._draw_planets(painter, center, radii, self.outer_planets, angle_offset, wheel_type='biwheel_outer')
         else:
-            # For a single wheel, all planets are considered 'inner'.
-            self._draw_planets(painter, center, radii["inner_planets_single"], self.planets, angle_offset, wheel_type='inner')
+            # For a single wheel, specify the 'single' wheel type.
+            self._draw_planets(painter, center, radii, self.planets, angle_offset, wheel_type='single')
 
         # 6. Draw aspect lines
         aspect_radius = radii["aspect_lines"]
@@ -291,7 +291,7 @@ class ChartDrawingWidget(QFrame):
                     p2_y = center.y() + aspect_radius * math.sin(p2_rad)
                     painter.drawLine(QPointF(p1_x, p1_y), QPointF(p2_x, p2_y))
 
-    def _draw_planets(self, painter, center, radius, planets, angle_offset, wheel_type='inner'):
+    def _draw_planets(self, painter, center, all_radii, planets, angle_offset, wheel_type='inner'):
         """
         Draws planet glyphs and their labels with advanced collision avoidance.
         - Uses graph-based clustering to handle complex stelliums.
@@ -337,23 +337,44 @@ class ChartDrawingWidget(QFrame):
                 # Sort cluster internally by longitude before adding
                 clusters.append(sorted(current_cluster, key=lambda item: item[1][0]))
 
-        # --- 2. Drawing with Radial Displacement ---
-        RADIAL_OFFSET_STEP = 0.08 # Percentage of radius to offset each planet in a cluster
+        # --- 2. Define Ring Boundaries based on Chart Type ---
+        if wheel_type == 'single':
+            outer_boundary = all_radii["zodiac_inner"]
+            inner_boundary = all_radii["aspect_circle"]
+        elif wheel_type == 'biwheel_outer':
+            outer_boundary = all_radii["zodiac_inner"]
+            inner_boundary = all_radii["outer_wheel"]
+        elif wheel_type == 'biwheel_inner':
+            outer_boundary = all_radii["outer_wheel"]
+            inner_boundary = all_radii["aspect_circle"]
+        else: # Fallback
+            outer_boundary = all_radii["zodiac_inner"]
+            inner_boundary = all_radii["aspect_circle"]
+
+        ring_thickness = outer_boundary - inner_boundary
+
+        # --- 3. Drawing with Boundary-Aware Radial Displacement ---
         for cluster in clusters:
             num_in_cluster = len(cluster)
             is_cluster = num_in_cluster > 1
 
             for i, (name, position_data) in enumerate(cluster):
                 longitude = position_data[0]
-                current_radius = radius
                 display_angle = longitude # Default to exact position
 
-                if is_cluster:
-                    # Apply radial displacement (staggering)
-                    # This creates clear visual lanes for each planet in the cluster
-                    offset_direction = 1 if (i % 2 == 0) else -1
-                    offset_magnitude = math.ceil(i / 2.0)
-                    current_radius = radius * (1 + offset_direction * offset_magnitude * RADIAL_OFFSET_STEP)
+                # Apply "staggered" radial displacement, constrained by the ring boundaries.
+                if is_cluster and num_in_cluster > 1:
+                    # Distribute planets evenly from the outer to the inner boundary.
+                    # t=0 is the outer edge, t=1 is the inner edge.
+                    # We add a small buffer to prevent glyphs from touching the lines.
+                    buffer = ring_thickness * 0.1
+                    usable_thickness = ring_thickness - (2 * buffer)
+                    t = i / (num_in_cluster - 1)
+                    current_radius = (outer_boundary - buffer) - (t * usable_thickness)
+                else:
+                    # Center a single planet or a one-planet cluster in the middle of the ring.
+                    current_radius = inner_boundary + (ring_thickness / 2)
+
 
                 angle_rad = math.radians(display_angle + angle_offset)
                 planet_color = self.planet_colors.get(name, QColor("white"))
@@ -374,28 +395,19 @@ class ChartDrawingWidget(QFrame):
                 painter.restore()
 
                 # --- Draw Position Label ---
-                # Retrograde symbol 'Rx' is added if the planet's speed is negative
                 is_retrograde = position_data[1] < 0
                 retro_symbol = " \u211E" if is_retrograde else "" # Unicode for Rx
-
-                # Format label as a single, clean line: "15° ♈ 45'"
                 label_text = f"{format_longitude(longitude, show_sign=True)}{retro_symbol}"
-
                 fm_label = QFontMetrics(label_font)
                 label_width = fm_label.horizontalAdvance(label_text)
                 label_height = fm_label.height()
 
                 # --- Position the label relative to the glyph ---
-                # The label is placed radially, either inside or outside the glyph's ring
+                # For all chart types, labels are drawn radially inward to prevent
+                # them from crossing into the zodiac or an outer planet ring.
                 gap = 5 # Gap between glyph and label
-                if wheel_type == 'inner':
-                    # Inner wheel: labels are inside the planet ring
-                    label_radius = current_radius - (glyph_height / 2) - gap
-                    text_anchor_offset = -label_width # Draw left from the point
-                else: # 'outer'
-                    # Outer wheel: labels are now INSIDE the planet ring to avoid overlap
-                    label_radius = current_radius - (glyph_height / 2) - gap
-                    text_anchor_offset = -label_width # Draw left from the point
+                label_radius = current_radius - (glyph_height / 2) - gap
+                text_anchor_offset = -label_width # Draw left from the point
 
                 label_x = center.x() + label_radius * math.cos(angle_rad)
                 label_y = center.y() + label_radius * math.sin(angle_rad)
