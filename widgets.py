@@ -205,8 +205,8 @@ class ChartDrawingWidget(QFrame):
 
         # Define key radii for chart construction.
         # These are calculated dynamically to ensure proper spacing and proportions.
-        zodiac_inner_radius = radius * 0.85
-        aspect_circle_radius = radius * 0.30
+        zodiac_inner_radius = radius * 0.90  # Make the zodiac ring thinner
+        aspect_circle_radius = radius * 0.40 # Make the aspect grid larger
 
         # Calculate the midpoint for the bi-wheel separator to ensure it's equidistant.
         outer_wheel_radius = (zodiac_inner_radius + aspect_circle_radius) / 2
@@ -393,9 +393,9 @@ class ChartDrawingWidget(QFrame):
                     label_radius = current_radius - (glyph_height / 2) - gap
                     text_anchor_offset = -label_width # Draw left from the point
                 else: # 'outer'
-                    # Outer wheel: labels are outside the planet ring
-                    label_radius = current_radius + (glyph_height / 2) + gap
-                    text_anchor_offset = 0 # Draw right from the point
+                    # Outer wheel: labels are now INSIDE the planet ring to avoid overlap
+                    label_radius = current_radius - (glyph_height / 2) - gap
+                    text_anchor_offset = -label_width # Draw left from the point
 
                 label_x = center.x() + label_radius * math.cos(angle_rad)
                 label_y = center.y() + label_radius * math.sin(angle_rad)
