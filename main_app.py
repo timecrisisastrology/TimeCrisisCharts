@@ -460,7 +460,7 @@ class MainWindow(QMainWindow):
                 self.reloc_lat = location.latitude
                 self.reloc_lon = location.longitude
                 self.lat_input.setText(f"{self.reloc_lat:.4f}")
-                self.lon_input.setText(f"{self.lon_lon:.4f}")
+                self.lon_input.setText(f"{self.reloc_lon:.4f}")
                 print(f"Relocated to {location.address} ({self.reloc_lat}, {self.reloc_lon})")
                 self.update_chart()
             else:
