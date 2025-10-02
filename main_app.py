@@ -107,11 +107,20 @@ class MainWindow(QMainWindow):
                 border: 1px solid #3DF6FF;
                 selection-background-color: #3DF6FF;
                 selection-color: #200334;
-                color: #94EBFF;
+                color: #FF01F9;
                 outline: 0px;
             }
             QComboBox::drop-down {
                 border: none;
+            }
+            QMenu {
+                background-color: #200334;
+                color: #FF01F9;
+                border: 1px solid #3DF6FF;
+            }
+            QMenu::item:selected {
+                background-color: #3DF6FF;
+                color: #200334;
             }
         """)
 
