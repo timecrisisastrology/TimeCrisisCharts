@@ -11,7 +11,7 @@ from timezonefinder import TimezoneFinder
 # os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 
 import swisseph as swe
-from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QVBoxLayout, QHBoxLayout, QLineEdit, QStackedWidget, QFileDialog, QComboBox, QMessageBox
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QVBoxLayout, QHBoxLayout, QLineEdit, QStackedWidget, QFileDialog, QComboBox, QMessageBox, QFrame)
 from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QPalette, QColor, QFontDatabase
 from widgets import InfoPanel, StyledButton, ChartDrawingWidget
@@ -202,6 +202,7 @@ class MainWindow(QMainWindow):
         container = QWidget()
         main_layout = QVBoxLayout(container)
 
+        # --- Chart Type Selection ---
         chart_type_layout = QVBoxLayout()
         self.btn_natal = StyledButton("Natal")
         self.btn_transit = StyledButton("Transit")
@@ -214,26 +215,68 @@ class MainWindow(QMainWindow):
         chart_type_layout.addWidget(self.btn_solar_return)
         chart_type_layout.addSpacing(20)
         chart_type_layout.addWidget(self.btn_time_map)
-
-        time_scroll_layout = QGridLayout()
-        self.time_buttons = {
-            '<< DAY': -1, 'DAY >>': 1, '<< WEEK': -7, 'WEEK >>': 7,
-            '<< MONTH': -30, 'MONTH >>': 30, '<< YEAR': -365, 'YEAR >>': 365
-        }
-        row, col = 0, 0
-        for text, days in self.time_buttons.items():
-            btn = StyledButton(text)
-            btn.setProperty("days", days)
-            time_scroll_layout.addWidget(btn, row, col)
-            btn.clicked.connect(self.handle_time_scroll)
-            col += 1
-            if col > 1: col = 0; row += 1
-
         main_layout.addLayout(chart_type_layout)
         main_layout.addSpacing(20)
-        main_layout.addWidget(QLabel("Time Scrolling"))
-        main_layout.addLayout(time_scroll_layout)
-        main_layout.addStretch()
+
+        # --- New Animation Control Box ---
+        # This section replaces the old grid of buttons with a modern dropdown and forward/backward controls.
+        animation_container = QWidget()
+        animation_layout = QVBoxLayout(animation_container)
+        animation_layout.setContentsMargins(0,0,0,0)
+        animation_layout.setSpacing(10)
+
+        # Title for the animation section
+        animation_title = QLabel("Animate Chart")
+        animation_title.setObjectName("panel-title") # Re-use style from InfoPanel
+        animation_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # Create a styled frame to group the controls aesthetically
+        control_frame = QFrame()
+        control_frame.setObjectName("container") # Re-use style from InfoPanel
+        control_frame.setStyleSheet("""
+            #container {
+                background-color: #200334;
+                border: 1px solid #3DF6FF;
+                border-radius: 5px;
+                padding: 10px;
+            }
+            #panel-title {
+                color: #FF01F9;
+                font-family: "TT Supermolot Neue Condensed";
+                font-size: 14pt;
+                font-weight: bold;
+                padding-bottom: 5px;
+            }
+        """)
+
+        frame_layout = QHBoxLayout(control_frame)
+        frame_layout.setContentsMargins(5,5,5,5)
+        frame_layout.setSpacing(5)
+
+        # Backward and Forward buttons
+        self.btn_anim_backward = StyledButton("<<")
+        self.btn_anim_forward = StyledButton(">>")
+
+        # Dropdown for time interval selection
+        self.animation_step_input = QComboBox()
+        self.animation_intervals = [
+            "1 Second", "15 Seconds", "30 Seconds", "1 Minute", "15 Minutes",
+            "30 Minutes", "Hour", "Day", "Week", "Month", "Year"
+        ]
+        self.animation_step_input.addItems(self.animation_intervals)
+        self.animation_step_input.setCurrentText("Day") # Default value
+
+        # Add controls to the frame
+        frame_layout.addWidget(self.btn_anim_backward)
+        frame_layout.addWidget(self.animation_step_input)
+        frame_layout.addWidget(self.btn_anim_forward)
+
+        # Add title and frame to the main animation container
+        animation_layout.addWidget(animation_title)
+        animation_layout.addWidget(control_frame)
+
+        main_layout.addWidget(animation_container)
+        main_layout.addStretch() # Pushes everything to the top
         return container
 
     def _create_chart_area(self):
@@ -262,16 +305,23 @@ class MainWindow(QMainWindow):
 
     def _connect_signals(self):
         """Connects all UI component signals to their respective slots."""
+        # Chart type buttons
         self.btn_natal.clicked.connect(lambda: self.set_chart_type('natal'))
         self.btn_transit.clicked.connect(lambda: self.set_chart_type('transit'))
         self.btn_progression.clicked.connect(lambda: self.set_chart_type('progression'))
         self.btn_solar_return.clicked.connect(lambda: self.set_chart_type('solar_return'))
         self.btn_time_map.clicked.connect(self.show_time_map_view)
 
+        # Animation control buttons
+        self.btn_anim_backward.clicked.connect(lambda: self.handle_animation_step(-1))
+        self.btn_anim_forward.clicked.connect(lambda: self.handle_animation_step(1))
+
+        # Relocation inputs
         self.lat_input.editingFinished.connect(self.handle_manual_relocation)
         self.lon_input.editingFinished.connect(self.handle_manual_relocation)
-        self.transit_location_input.editingFinished.connect(self.handle_transit_relocation) # New connection
+        self.transit_location_input.editingFinished.connect(self.handle_transit_relocation)
 
+        # Chart generation and file operations
         self.btn_generate_chart.clicked.connect(self.handle_generate_chart)
         self.btn_save_chart.clicked.connect(self.handle_save_chart)
         self.btn_load_chart.clicked.connect(self.handle_load_chart)
@@ -286,10 +336,36 @@ class MainWindow(QMainWindow):
         self.time_map_area.set_chart_data("Jane Doe", self.sample_birth_date, self.natal_planets, self.natal_houses)
         self.view_stack.setCurrentWidget(self.time_map_area) # Switch to time map view
 
-    def handle_time_scroll(self):
-        sender = self.sender()
-        days_to_add = sender.property("days")
-        self.current_date += timedelta(days=days_to_add)
+    def handle_animation_step(self, direction):
+        """
+        Handles stepping the chart forward or backward in time based on the
+        selected interval in the QComboBox.
+        """
+        interval_text = self.animation_step_input.currentText()
+
+        # Map the dropdown text to a timedelta object
+        # Note: 'Month' and 'Year' are approximated for simplicity. A more precise
+        # implementation might use dateutil.relativedelta.
+        interval_map = {
+            "1 Second": timedelta(seconds=1),
+            "15 Seconds": timedelta(seconds=15),
+            "30 Seconds": timedelta(seconds=30),
+            "1 Minute": timedelta(minutes=1),
+            "15 Minutes": timedelta(minutes=15),
+            "30 Minutes": timedelta(minutes=30),
+            "Hour": timedelta(hours=1),
+            "Day": timedelta(days=1),
+            "Week": timedelta(weeks=1),
+            "Month": timedelta(days=30), # Approximation
+            "Year": timedelta(days=365)  # Approximation
+        }
+
+        delta = interval_map.get(interval_text, timedelta(days=1))
+
+        # Apply the change
+        self.current_date += (delta * direction)
+
+        # Refresh the chart display
         self.update_chart()
 
     def handle_manual_relocation(self):
