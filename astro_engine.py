@@ -155,7 +155,7 @@ def calculate_solar_return(birth_date, target_year, latitude, longitude, house_s
     return_planets, return_houses = calculate_natal_chart(return_date, latitude, longitude, house_system=house_system)
     return return_planets, return_houses, return_date
 
-def calculate_lunar_return(birth_date, target_date, latitude, longitude):
+def calculate_lunar_return(birth_date, target_date, latitude, longitude, house_system=b'P'):
     """Calculates the Lunar Return chart for a given date and location."""
     natal_jd_ut = swe.utc_to_jd(birth_date.year, birth_date.month, birth_date.day, birth_date.hour, birth_date.minute, birth_date.second, 1)[1]
     natal_moon_lon = swe.calc_ut(natal_jd_ut, swe.MOON, swe.FLG_SWIEPH)[0][0]
@@ -163,7 +163,7 @@ def calculate_lunar_return(birth_date, target_date, latitude, longitude):
     start_jd_ut_for_search = swe.utc_to_jd(target_date.year, target_date.month, target_date.day, 0, 0, 0, 1)[1]
     return_jd = _find_return_jd(natal_moon_lon, swe.MOON, start_jd_ut_for_search)
 
-    return_date_tuple = swe.jdut1_to_utc(return_jd, 1) # Corrected function name
+    return_date_tuple = swe.jdut1_to_utc(return_jd, 1)
     # The tuple returned by pyswisseph contains a float for the seconds part.
     # We need to separate it into seconds and microseconds for the datetime constructor.
     year, month, day, hour, minute, second_float = return_date_tuple
@@ -171,7 +171,7 @@ def calculate_lunar_return(birth_date, target_date, latitude, longitude):
     microsecond = int((second_float - second) * 1_000_000)
     return_date = datetime(int(year), int(month), int(day), int(hour), int(minute), second, microsecond, tzinfo=timezone.utc)
 
-    return_planets, return_houses = calculate_natal_chart(return_date, latitude, longitude)
+    return_planets, return_houses = calculate_natal_chart(return_date, latitude, longitude, house_system=house_system)
     return return_planets, return_houses, return_date
 
 # --- UI HELPER FUNCTIONS ---
@@ -279,7 +279,7 @@ if __name__ == "__main__":
 
     # --- Test Lunar Return ---
     print("\n--- Next Lunar Return ---")
-    lr_planets, lr_houses, lr_date = calculate_lunar_return(sample_birth_date, today, pawtucket_lat, pawtucket_lon)
+    lr_planets, lr_houses, lr_date = calculate_lunar_return(sample_birth_date, today, pawtucket_lat, pawtucket_lon, house_system=b'P')
     print(f"Lunar Return Date: {lr_date.strftime('%Y-%m-%d %H:%M:%S %Z')}")
     print(f"LR Moon Position: {lr_planets['Moon'][0]:.2f} (Natal: {planets['Moon'][0]:.2f})")
     print(f"LR Ascendant: {lr_houses[0]:.2f}")

@@ -11,14 +11,15 @@ from timezonefinder import TimezoneFinder
 # os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 
 import swisseph as swe
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QVBoxLayout, QHBoxLayout, QLineEdit, QStackedWidget, QFileDialog, QComboBox, QMessageBox, QFrame)
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QVBoxLayout, QHBoxLayout, QLineEdit, QStackedWidget, QFileDialog, QComboBox, QMessageBox, QFrame, QMenu, QInputDialog)
 from PyQt6.QtCore import QTimer, Qt
-from PyQt6.QtGui import QPalette, QColor, QFontDatabase
+from PyQt6.QtGui import QPalette, QColor, QFontDatabase, QAction
 from widgets import InfoPanel, StyledButton, ChartDrawingWidget
 from time_map_widget import TimeMapWidget
 from astro_engine import (
     calculate_natal_chart, calculate_aspects, calculate_transits,
-    calculate_secondary_progressions, calculate_solar_return
+    calculate_secondary_progressions, calculate_solar_arc_progressions,
+    calculate_solar_return, calculate_lunar_return
 )
 
 # --- Global variable to hold the correct font name ---
@@ -66,6 +67,9 @@ class MainWindow(QMainWindow):
 
         # --- State Management ---
         self.current_chart_type = 'natal'
+        self.predictive_type = 'transit' # 'transit', 'secondary_progression', 'solar_arc'
+        self.return_year = None # Store the target year for returns
+        self.return_month = None # Store the target month for lunar returns
         self.current_date = datetime.now(timezone.utc)
         self.reloc_lat = 41.87 # Pawtucket, RI default
         self.reloc_lon = -71.38
@@ -183,18 +187,20 @@ class MainWindow(QMainWindow):
 
     def _create_dynamic_controls_panel(self):
         """Creates the panel for dynamic controls like date, time, and relocation."""
+        self.chart_mode_label = QLabel("Natal Chart")
+        self.chart_mode_label.setStyleSheet("color: #FF01F9; font-weight: bold;")
         self.date_label = QLabel(self.current_date.strftime("%d %b %Y, %H:%M:%S %Z"))
-        self.transit_location_input = QLineEdit("Pawtucket, RI, USA") # New location input
+        self.transit_location_input = QLineEdit("Pawtucket, RI, USA")
         self.lat_input = QLineEdit(str(self.reloc_lat))
         self.lon_input = QLineEdit(str(self.reloc_lon))
 
         transit_data = {
+            "Mode": self.chart_mode_label,
             "Date": self.date_label,
-            "Reloc Location": self.transit_location_input, # New field
+            "Reloc Location": self.transit_location_input,
             "Reloc Lat": self.lat_input,
             "Reloc Lon": self.lon_input,
         }
-        # The InfoPanel is now the container
         return InfoPanel("Dynamic Chart Controls", transit_data)
 
     def _create_toolbar(self):
@@ -205,14 +211,13 @@ class MainWindow(QMainWindow):
         # --- Chart Type Selection ---
         chart_type_layout = QVBoxLayout()
         self.btn_natal = StyledButton("Natal")
-        self.btn_transit = StyledButton("Transit")
-        self.btn_progression = StyledButton("Progression")
-        self.btn_solar_return = StyledButton("Solar Return")
+        self.btn_predictive = StyledButton("Predictive")
+        self.btn_returns = StyledButton("Returns")
         self.btn_time_map = StyledButton("Time Map")
+
         chart_type_layout.addWidget(self.btn_natal)
-        chart_type_layout.addWidget(self.btn_transit)
-        chart_type_layout.addWidget(self.btn_progression)
-        chart_type_layout.addWidget(self.btn_solar_return)
+        chart_type_layout.addWidget(self.btn_predictive)
+        chart_type_layout.addWidget(self.btn_returns)
         chart_type_layout.addSpacing(20)
         chart_type_layout.addWidget(self.btn_time_map)
         main_layout.addLayout(chart_type_layout)
@@ -307,9 +312,8 @@ class MainWindow(QMainWindow):
         """Connects all UI component signals to their respective slots."""
         # Chart type buttons
         self.btn_natal.clicked.connect(lambda: self.set_chart_type('natal'))
-        self.btn_transit.clicked.connect(lambda: self.set_chart_type('transit'))
-        self.btn_progression.clicked.connect(lambda: self.set_chart_type('progression'))
-        self.btn_solar_return.clicked.connect(lambda: self.set_chart_type('solar_return'))
+        self.btn_predictive.clicked.connect(self.handle_predictive_menu)
+        self.btn_returns.clicked.connect(self.handle_returns_menu)
         self.btn_time_map.clicked.connect(self.show_time_map_view)
 
         # Animation control buttons
@@ -326,11 +330,65 @@ class MainWindow(QMainWindow):
         self.btn_save_chart.clicked.connect(self.handle_save_chart)
         self.btn_load_chart.clicked.connect(self.handle_load_chart)
 
-    def set_chart_type(self, chart_type):
+    def set_chart_type(self, chart_type, predictive_type=None):
         """Sets the current chart type and updates the view."""
         self.current_chart_type = chart_type
-        self.view_stack.setCurrentWidget(self.chart_area) # Switch to chart view
+        if predictive_type:
+            self.predictive_type = predictive_type
+        self.view_stack.setCurrentWidget(self.chart_area)
         self.update_chart()
+
+    def handle_predictive_menu(self):
+        """Creates and shows the menu for predictive chart types."""
+        menu = QMenu(self)
+        menu.addAction("Transits", lambda: self.set_chart_type('predictive', 'transit'))
+        menu.addAction("Secondary Progressions", lambda: self.set_chart_type('predictive', 'secondary_progression'))
+        menu.addAction("Solar Arc Progressions", lambda: self.set_chart_type('predictive', 'solar_arc'))
+        menu.exec(self.btn_predictive.mapToGlobal(self.btn_predictive.rect().bottomLeft()))
+
+    def handle_returns_menu(self):
+        """Creates and shows the menu for return chart types."""
+        menu = QMenu(self)
+        menu.addAction("Solar Return", self.prompt_for_solar_return)
+        menu.addAction("Lunar Return", self.prompt_for_lunar_return)
+        menu.exec(self.btn_returns.mapToGlobal(self.btn_returns.rect().bottomLeft()))
+
+    def prompt_for_solar_return(self):
+        """Prompts the user for the desired solar return year."""
+        items = ["Current", "Next", "Select Year..."]
+        item, ok = QInputDialog.getItem(self, "Select Solar Return", "Choose an option:", items, 0, False)
+        if ok and item:
+            if item == "Current":
+                # Find the SR year for the *last* birthday that occurred
+                today = datetime.now(timezone.utc).date()
+                last_birthday_year = today.year
+                if (today.month, today.day) < (self.sample_birth_date.month, self.sample_birth_date.day):
+                    last_birthday_year -= 1
+                self.return_year = last_birthday_year
+            elif item == "Next":
+                # Find the SR year for the *next* birthday
+                today = datetime.now(timezone.utc).date()
+                next_birthday_year = today.year
+                if (today.month, today.day) >= (self.sample_birth_date.month, self.sample_birth_date.day):
+                    next_birthday_year += 1
+                self.return_year = next_birthday_year
+            elif item == "Select Year...":
+                year, ok2 = QInputDialog.getInt(self, "Enter Year", "Year:", datetime.now().year, 1900, 2200)
+                if ok2:
+                    self.return_year = year
+            self.set_chart_type('solar_return')
+
+    def prompt_for_lunar_return(self):
+        """Prompts the user for the desired lunar return month and year."""
+        # For simplicity, we'll just ask for a year and month to start the search.
+        # A more complex UI could provide "Current" and "Next" based on the last/next ~28 day cycle.
+        year, ok1 = QInputDialog.getInt(self, "Enter Year", "Year for Lunar Return:", datetime.now().year, 1900, 2200)
+        if ok1:
+            month, ok2 = QInputDialog.getInt(self, "Enter Month", "Month (1-12):", datetime.now().month, 1, 12)
+            if ok2:
+                self.return_year = year
+                self.return_month = month
+                self.set_chart_type('lunar_return')
 
     def show_time_map_view(self):
         self.time_map_area.set_chart_data("Jane Doe", self.sample_birth_date, self.natal_planets, self.natal_houses)
@@ -510,47 +568,55 @@ class MainWindow(QMainWindow):
     def update_chart(self):
         """The central method to recalculate and redraw the chart based on current state."""
         self.date_label.setText(self.current_date.strftime("%d %b %Y, %H:%M:%S %Z"))
-        
-        # Get the currently selected house system for all chart types
         selected_house_system_name = self.house_system_input.currentText()
         house_system_code = self.house_systems.get(selected_house_system_name, "P").encode('utf-8')
 
-        if self.current_chart_type == 'natal':
-            self.chart_area.set_chart_data(self.natal_planets, self.natal_houses, self.natal_aspects)
-        
-        elif self.current_chart_type == 'transit':
-            transit_planets = calculate_transits(self.current_date)
-            # Calculate transiting houses for the relocated position to find ASC/MC
-            jd_utc = swe.utc_to_jd(self.current_date.year, self.current_date.month, self.current_date.day, self.current_date.hour, self.current_date.minute, self.current_date.second, 1)[1]
-            transit_angles = swe.houses(jd_utc, self.reloc_lat, self.reloc_lon, house_system_code)[1]
-            transit_planets['ASC'] = (transit_angles[0], 0.0) # Add Ascendant
-            transit_planets['MC'] = (transit_angles[1], 0.0)  # Add Midheaven
-            # Always display the natal houses
-            self.chart_area.set_chart_data(
-                self.natal_planets, self.natal_houses, [], outer_planets=transit_planets, display_houses=self.natal_houses
-            )
+        outer_planets = None
+        display_houses = self.natal_houses
+        aspects = []
 
-        elif self.current_chart_type == 'progression':
-            progressed_planets = calculate_secondary_progressions(self.sample_birth_date, self.current_date)
-            # Calculate progressed houses for the relocated position to find ASC/MC
-            days_offset = (self.current_date.date() - self.sample_birth_date.date()).days
-            progression_date = self.sample_birth_date + timedelta(days=days_offset)
-            jd_utc = swe.utc_to_jd(progression_date.year, progression_date.month, progression_date.day, progression_date.hour, progression_date.minute, progression_date.second, 1)[1]
-            progressed_angles = swe.houses(jd_utc, self.reloc_lat, self.reloc_lon, house_system_code)[1]
-            progressed_planets['ASC'] = (progressed_angles[0], 0.0) # Add Ascendant
-            progressed_planets['MC'] = (progressed_angles[1], 0.0)  # Add Midheaven
-            # Always display the natal houses
-            self.chart_area.set_chart_data(
-                self.natal_planets, self.natal_houses, [], outer_planets=progressed_planets, display_houses=self.natal_houses
-            )
+        if self.current_chart_type == 'natal':
+            self.chart_mode_label.setText("Natal Chart")
+            aspects = self.natal_aspects
+        
+        elif self.current_chart_type == 'predictive':
+            jd_utc = swe.utc_to_jd(self.current_date.year, self.current_date.month, self.current_date.day, self.current_date.hour, self.current_date.minute, self.current_date.second, 1)[1]
+            angles = swe.houses(jd_utc, self.reloc_lat, self.reloc_lon, house_system_code)[1]
+
+            if self.predictive_type == 'transit':
+                self.chart_mode_label.setText("Transits")
+                outer_planets = calculate_transits(self.current_date)
+            elif self.predictive_type == 'secondary_progression':
+                self.chart_mode_label.setText("Secondary Progressions")
+                outer_planets = calculate_secondary_progressions(self.sample_birth_date, self.current_date)
+            elif self.predictive_type == 'solar_arc':
+                self.chart_mode_label.setText("Solar Arc Progressions")
+                outer_planets = calculate_solar_arc_progressions(self.sample_birth_date, self.current_date)
+
+            if outer_planets:
+                outer_planets['ASC'] = (angles[0], 0.0)
+                outer_planets['MC'] = (angles[1], 0.0)
 
         elif self.current_chart_type == 'solar_return':
-            sr_year = self.current_date.year
-            # Pass the selected house system to the calculation
-            sr_planets, sr_houses, _ = calculate_solar_return(self.sample_birth_date, sr_year, self.reloc_lat, self.reloc_lon, house_system=house_system_code)
-            self.chart_area.set_chart_data(
-                self.natal_planets, self.natal_houses, [], outer_planets=sr_planets, display_houses=sr_houses
-            )
+            if self.return_year:
+                self.chart_mode_label.setText(f"Solar Return {self.return_year}")
+                outer_planets, display_houses, _ = calculate_solar_return(
+                    self.sample_birth_date, self.return_year, self.reloc_lat, self.reloc_lon, house_system=house_system_code
+                )
+
+        elif self.current_chart_type == 'lunar_return':
+            if self.return_year and self.return_month:
+                # Start the search from the beginning of the selected month
+                search_date = datetime(self.return_year, self.return_month, 1, tzinfo=timezone.utc)
+                self.chart_mode_label.setText(f"Lunar Return {search_date.strftime('%b %Y')}")
+                outer_planets, display_houses, _ = calculate_lunar_return(
+                    self.sample_birth_date, search_date, self.reloc_lat, self.reloc_lon, house_system=house_system_code
+                )
+
+        self.chart_area.set_chart_data(
+            self.natal_planets, self.natal_houses, aspects,
+            outer_planets=outer_planets, display_houses=display_houses
+        )
 
     def save_screenshot_and_exit(self):
         """Saves a screenshot of the window and closes the application."""
