@@ -183,60 +183,70 @@ class ChartDrawingWidget(QFrame):
         """
         Defines the precise inner and outer boundaries for all concentric data rings.
         This is the core of the professional layout system. It uses fixed-width lanes
-        to guarantee separation and prevent overlaps.
+        to guarantee separation and prevent overlaps, addressing user feedback.
         """
         rings = {}
         # Define fixed widths for each lane. These are pixel values.
+        # Adjusted for clarity and to meet user requirements.
         zodiac_width = 40
-        cusp_label_width = 30
-        planet_glyph_width = 35
-        planet_info_width = 30
-        separator_width = 8 # Gutter between wheels
-        house_number_width = 25
+        cusp_label_width = 25 # For degree labels like 25° 45'
+        planet_glyph_width = 30 # For planet symbols ♃
+        planet_info_width = 35  # For text like "15° ♈ 10' R"
+        separator_width = 5     # A clean gutter between wheels
+        house_number_width = 20 # A slim ring for house numbers 1-12
 
-        # Work from the outside in, starting from the base_radius.
-        current_outer = base_radius
-        rings['zodiac'] = {'outer': current_outer, 'inner': current_outer - zodiac_width}
+        # --- Ring Definition from the Outside-In ---
 
-        # The ring for cusp degree labels sits *outside* the main zodiac ring.
+        # 1. Cusp Labels Ring (Outermost)
+        # This ring sits *outside* the main zodiac wheel for cusp degree labels.
         rings['cusp_labels'] = {'outer': base_radius + cusp_label_width, 'inner': base_radius}
 
-        # Set the boundary for the inner chart elements, starting from inside the zodiac.
-        current_outer = rings['zodiac']['inner']
+        # 2. Zodiac Ring
+        # The ring containing the zodiac sign glyphs (♈, ♉, etc.)
+        current_outer = base_radius
+        rings['zodiac'] = {'outer': current_outer, 'inner': current_outer - zodiac_width}
+        current_outer -= zodiac_width
 
         if is_biwheel:
-            # Layout for a two-wheel chart (e.g., Natal + Transits)
-            rings['outer_planets_glyphs'] = {'outer': current_outer, 'inner': current_outer - planet_glyph_width}
-            current_outer -= planet_glyph_width
+            # --- Bi-Wheel Layout (e.g., Natal + Transits) ---
+            # This layout provides two distinct, separated wheels for planets.
+
+            # 3a. Outer Wheel (e.g., Transits)
             rings['outer_planets_info'] = {'outer': current_outer, 'inner': current_outer - planet_info_width}
             current_outer -= planet_info_width
+            rings['outer_planets_glyphs'] = {'outer': current_outer, 'inner': current_outer - planet_glyph_width}
+            current_outer -= planet_glyph_width
 
+            # 4a. Separator (Gutter)
             rings['separator'] = {'outer': current_outer, 'inner': current_outer - separator_width}
             current_outer -= separator_width
 
-            rings['inner_planets_glyphs'] = {'outer': current_outer, 'inner': current_outer - planet_glyph_width}
-            current_outer -= planet_glyph_width
+            # 5a. Inner Wheel (e.g., Natal)
             rings['inner_planets_info'] = {'outer': current_outer, 'inner': current_outer - planet_info_width}
             current_outer -= planet_info_width
+            rings['inner_planets_glyphs'] = {'outer': current_outer, 'inner': current_outer - planet_glyph_width}
+            current_outer -= planet_glyph_width
 
-            rings['house_numbers'] = {'outer': current_outer, 'inner': current_outer - house_number_width}
-            current_outer -= house_number_width
         else:
-            # Layout for a single-wheel chart (e.g., Natal only)
-            # Give more space for a single wheel.
-            single_glyph_width = 50
-            single_info_width = 40
+            # --- Single-Wheel Layout (e.g., Natal Only) ---
+            # Give slightly more space since there's no second wheel.
+            single_glyph_width = 45
+            single_info_width = 45
 
-            rings['inner_planets_glyphs'] = {'outer': current_outer, 'inner': current_outer - single_glyph_width}
-            current_outer -= single_glyph_width
+            # 3b. Planet Info and Glyphs
             rings['inner_planets_info'] = {'outer': current_outer, 'inner': current_outer - single_info_width}
             current_outer -= single_info_width
+            rings['inner_planets_glyphs'] = {'outer': current_outer, 'inner': current_outer - single_glyph_width}
+            current_outer -= single_glyph_width
 
-            rings['house_numbers'] = {'outer': current_outer, 'inner': current_outer - house_number_width}
-            current_outer -= house_number_width
+        # 6. House Numbers Ring (Moved significantly inward as per user request)
+        # This ring is now much closer to the center.
+        house_numbers_outer_radius = rings['inner_planets_glyphs']['inner'] * 0.7 if is_biwheel else rings['inner_planets_glyphs']['inner'] * 0.6
+        rings['house_numbers'] = {'outer': house_numbers_outer_radius, 'inner': house_numbers_outer_radius - house_number_width}
 
-        # The aspect grid fills the remaining space in the center.
-        rings['aspect_grid'] = {'outer': current_outer, 'inner': 0}
+        # 7. Aspect Grid (Center)
+        # The aspect grid fills the remaining space inside the house number ring.
+        rings['aspect_grid'] = {'outer': rings['house_numbers']['inner'], 'inner': 0}
 
         return rings
 
@@ -328,6 +338,7 @@ class ChartDrawingWidget(QFrame):
         Draws planet glyphs and their labels within dedicated, non-overlapping rings.
         - Glyphs are drawn and staggered within the 'glyph_ring'.
         - Text info is drawn and staggered within the 'info_ring'.
+        - Includes logic to prevent labels from overlapping house cusp lines.
         """
         planet_font = QFont(self.astro_font_name, 20)
         planet_font.setStyleStrategy(QFont.StyleStrategy.NoFontMerging)
@@ -335,7 +346,7 @@ class ChartDrawingWidget(QFrame):
 
         if not planets: return
 
-        # --- 1. Graph-based Clustering (same as before) ---
+        # --- 1. Graph-based Clustering ---
         sorted_planets = sorted(planets.items(), key=lambda item: item[1][0])
         num_planets = len(sorted_planets)
         adj = [[] for _ in range(num_planets)]
@@ -367,33 +378,34 @@ class ChartDrawingWidget(QFrame):
                             q.append(v)
                 clusters.append(sorted(current_cluster, key=lambda item: item[1][0]))
 
-        # --- 2. Drawing with Strict Ring Boundaries ---
+        # --- 2. Drawing with Strict Ring Boundaries & Collision Avoidance ---
         for cluster in clusters:
             num_in_cluster = len(cluster)
             is_cluster = num_in_cluster > 1
 
             for i, (name, position_data) in enumerate(cluster):
                 longitude = position_data[0]
-                angle_rad = math.radians(longitude + angle_offset)
                 planet_color = self.planet_colors.get(name, QColor("white"))
 
                 # --- Position and Draw Planet Glyph in its Ring ---
                 glyph_ring_thickness = glyph_ring['outer'] - glyph_ring['inner']
                 if is_cluster:
+                    # Stagger glyphs radially within their ring
                     buffer = glyph_ring_thickness * 0.1
                     usable_thickness = glyph_ring_thickness - (2 * buffer)
-                    t = i / (num_in_cluster - 1)
+                    t = i / (num_in_cluster - 1) if num_in_cluster > 1 else 0.5
                     glyph_radius = (glyph_ring['outer'] - buffer) - (t * usable_thickness)
                 else:
                     glyph_radius = (glyph_ring['inner'] + glyph_ring['outer']) / 2
 
+                glyph_angle_rad = math.radians(longitude + angle_offset)
                 glyph = self.planet_glyphs.get(name, '?')
                 fm_glyph = QFontMetrics(planet_font)
                 glyph_width = fm_glyph.horizontalAdvance(glyph)
                 glyph_height = fm_glyph.height()
 
-                glyph_x = center.x() + glyph_radius * math.cos(angle_rad)
-                glyph_y = center.y() + glyph_radius * math.sin(angle_rad)
+                glyph_x = center.x() + glyph_radius * math.cos(glyph_angle_rad)
+                glyph_y = center.y() + glyph_radius * math.sin(glyph_angle_rad)
 
                 painter.save()
                 painter.translate(glyph_x, glyph_y)
@@ -413,27 +425,41 @@ class ChartDrawingWidget(QFrame):
                     # Stagger info labels in sync with their glyphs
                     buffer = info_ring_thickness * 0.1
                     usable_thickness = info_ring_thickness - (2 * buffer)
-                    t = i / (num_in_cluster - 1)
+                    t = i / (num_in_cluster - 1) if num_in_cluster > 1 else 0.5
                     label_radius = (info_ring['outer'] - buffer) - (t * usable_thickness)
                 else:
                     label_radius = (info_ring['inner'] + info_ring['outer']) / 2
 
-                label_x = center.x() + label_radius * math.cos(angle_rad)
-                label_y = center.y() + label_radius * math.sin(angle_rad)
+                # --- Cusp Collision Avoidance for Labels ---
+                label_angle_deg = longitude
+                avoidance_offset_deg = 0
+                min_dist_to_cusp = 3 # Minimum degrees of separation from a cusp line
+                for cusp_deg in self.display_houses:
+                    dist = abs((label_angle_deg % 360) - (cusp_deg % 360))
+                    dist = min(dist, 360 - dist)
+                    if dist < min_dist_to_cusp:
+                        # The label is too close to a cusp line. Nudge it.
+                        direction = 1 if (label_angle_deg - cusp_deg + 360) % 360 < 180 else -1
+                        avoidance_offset_deg = direction * (min_dist_to_cusp - dist)
+                        break # Apply the first correction needed
+
+                final_label_angle_deg = label_angle_deg + avoidance_offset_deg + angle_offset
+                label_angle_rad = math.radians(final_label_angle_deg)
+
+                label_x = center.x() + label_radius * math.cos(label_angle_rad)
+                label_y = center.y() + label_radius * math.sin(label_angle_rad)
 
                 painter.save()
                 painter.translate(label_x, label_y)
                 painter.scale(1, -1)
 
-                effective_angle = longitude + angle_offset
+                effective_angle = final_label_angle_deg
                 painter.rotate(-effective_angle)
 
                 if 90 < effective_angle % 360 < 270:
                     painter.rotate(180)
-                    # For text on the left, anchor from the right
                     final_draw_point = QPointF(-label_width, fm_label.ascent() / 2)
                 else:
-                    # For text on the right, anchor from the left
                     final_draw_point = QPointF(0, fm_label.ascent() / 2)
 
                 self._draw_glow_text(painter, final_draw_point, label_text, label_font, planet_color)
@@ -442,28 +468,36 @@ class ChartDrawingWidget(QFrame):
     def _draw_cusp_labels(self, painter, center, ring, color, angle_offset):
         """
         Draws the degree labels for each house cusp, placing them within a dedicated ring.
+        Includes a more robust collision avoidance system.
         """
         if not self.display_houses: return
-        label_font = QFont("Titillium Web", 12); label_font.setBold(True)
+        label_font = QFont("Titillium Web", 10); label_font.setBold(True)
         font_metrics = QFontMetrics(label_font)
         drawn_label_rects = []
 
-        def format_degree(deg):
-            deg %= 360
-            deg_in_sign = deg % 30
-            minutes = (deg_in_sign - int(deg_in_sign)) * 60
-            return f"{int(deg_in_sign)}° {int(minutes)}'"
-
+        # Use a list of tuples to handle sorting and modification
+        cusps_to_draw = []
         for i, cusp_deg in enumerate(self.display_houses):
-            text = format_degree(cusp_deg)
-            if i == 0: text = f"ASC = {text}"
+            deg_in_sign = cusp_deg % 30
+            minutes = (deg_in_sign - int(deg_in_sign)) * 60
+            text = f"{int(deg_in_sign)}°{int(minutes)}'"
+            # Make ASC/MC labels more prominent
+            if i == 0: text = f"ASC {text}"
+            if i == 9: text = f"MC {text}"
+            cusps_to_draw.append([cusp_deg, text])
 
+        for i in range(len(cusps_to_draw)):
+            cusp_deg, text = cusps_to_draw[i]
             angle_with_offset = cusp_deg + angle_offset
+
             # Start placement in the middle of the ring
             label_radius = (ring['inner'] + ring['outer']) / 2
+            max_radius = ring['outer'] + 10 # Allow pushing slightly outside if necessary
+            min_radius = ring['inner'] - 10 # Allow pushing slightly inside
 
             # --- Collision Avoidance Loop ---
-            while True:
+            attempt = 0
+            while attempt < 10: # Limit attempts to prevent infinite loops
                 angle_rad = math.radians(angle_with_offset)
                 x = center.x() + label_radius * math.cos(angle_rad)
                 y = center.y() + label_radius * math.sin(angle_rad)
@@ -471,36 +505,54 @@ class ChartDrawingWidget(QFrame):
                 text_width = font_metrics.horizontalAdvance(text)
                 text_height = font_metrics.height()
 
+                # Calculate the bounding rectangle of the rotated text
                 transform = QTransform()
                 transform.translate(x, y)
-                rotation_angle = angle_with_offset - 90
-                if 90 < angle_with_offset % 360 < 270:
+                effective_angle = angle_with_offset % 360
+                rotation_angle = effective_angle - 90
+                if 90 < effective_angle < 270:
                     transform.rotate(-(rotation_angle + 180))
                 else:
                     transform.rotate(-rotation_angle)
-                untransformed_rect = QRectF(-text_width / 2, -text_height / 2, text_width, text_height)
+                # Add a small buffer to the rectangle for better spacing
+                buffer = 2
+                untransformed_rect = QRectF(-text_width / 2 - buffer, -text_height / 2 - buffer, text_width + 2*buffer, text_height + 2*buffer)
                 current_rect = transform.mapRect(untransformed_rect)
 
+                # Check for overlap with previously drawn labels
                 is_overlapping = any(current_rect.intersects(r) for r in drawn_label_rects)
 
                 if not is_overlapping:
                     drawn_label_rects.append(current_rect)
-                    break
+                    break # Position is good, exit the loop
 
-                # If overlapping, push the label further out, but cap it at the ring's outer boundary
-                label_radius += 5
-                if label_radius > ring['outer']:
-                    # As a fallback, just draw it and accept the overlap if it can't be resolved.
-                    # A more advanced strategy could shrink the font size.
-                    break
+                # If overlapping, try a different radius
+                # Alternate pushing outwards and inwards
+                if attempt % 2 == 0:
+                    label_radius += (attempt + 1) * 3
+                    if label_radius > max_radius: label_radius = max_radius
+                else:
+                    label_radius -= (attempt + 1) * 3
+                    if label_radius < min_radius: label_radius = min_radius
+                attempt += 1
 
+            # --- Draw the label at the final, best-effort position ---
+            angle_rad = math.radians(angle_with_offset)
+            x = center.x() + label_radius * math.cos(angle_rad)
+            y = center.y() + label_radius * math.sin(angle_rad)
+            text_width = font_metrics.horizontalAdvance(text)
 
-            # --- Draw the label at the final, non-overlapping position ---
             painter.save()
             painter.translate(x, y)
             painter.scale(1, -1)
-            rotation_angle = angle_with_offset - 90
-            painter.rotate(-(rotation_angle + 180 if 90 < angle_with_offset % 360 < 270 else rotation_angle))
+
+            effective_angle = angle_with_offset % 360
+            rotation_angle = effective_angle - 90
+            if 90 < effective_angle < 270:
+                painter.rotate(-(rotation_angle + 180))
+            else:
+                painter.rotate(-rotation_angle)
+
             draw_point = QPointF(-text_width / 2, font_metrics.height() / 4)
             self._draw_glow_text(painter, draw_point, text, label_font, color)
             painter.restore()
