@@ -20,8 +20,8 @@ class TimelineGridWidget(QFrame):
         self.setMouseTracking(True)
 
         # State & Data
-        self.start_date = datetime.now()
-        self.months_to_display = 3
+        self.start_date = None
+        self.months_to_display = 0
         self.birth_date = None
         self.natal_planets = {}
         self.natal_houses = []
@@ -46,14 +46,15 @@ class TimelineGridWidget(QFrame):
         }
 
     def set_chart_data(self, birth_date, natal_planets, natal_houses):
-        """Receives natal data and triggers the aspect calculation for the timeline."""
+        """Receives and stores natal data. Does not trigger calculation."""
         self.birth_date = birth_date
         self.natal_planets = natal_planets
         self.natal_houses = natal_houses
-        self._calculate_and_process_timeline()
-        self.update()
+        # Calculation is now triggered by set_view
 
-    def set_timescale(self, months):
+    def set_view(self, start_date, months):
+        """Sets the view window for the timeline and triggers a full recalculation."""
+        self.start_date = start_date
         self.months_to_display = months
         self._calculate_and_process_timeline()
         self.update()
@@ -62,6 +63,8 @@ class TimelineGridWidget(QFrame):
 
     def _calculate_and_process_timeline(self):
         """High-level method to run the full calculation and processing pipeline."""
+        if not self.start_date or not self.birth_date:
+            return # Don't calculate if we don't have a date range or natal data
         self._calculate_daily_aspects()
         self._process_aspect_events()
 
