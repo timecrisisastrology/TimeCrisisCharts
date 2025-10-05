@@ -14,7 +14,7 @@ import swisseph as swe
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QVBoxLayout, QHBoxLayout, QLineEdit, QStackedWidget, QFileDialog, QComboBox, QMessageBox, QFrame, QMenu, QInputDialog)
 from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QPalette, QColor, QFontDatabase, QAction
-from widgets import InfoPanel, StyledButton, ChartDrawingWidget
+from widgets import InfoPanel, StyledButton, ChartWidget
 from time_map_widget import TimeMapWidget
 from astro_engine import (
     calculate_natal_chart, calculate_aspects, calculate_transits,
@@ -296,7 +296,7 @@ class MainWindow(QMainWindow):
     def _create_chart_area(self):
         """Creates the central chart display area."""
         view_stack = QStackedWidget()
-        self.chart_area = ChartDrawingWidget(ASTRO_FONT_NAME)
+        self.chart_area = ChartWidget(ASTRO_FONT_NAME)
         self.time_map_area = TimeMapWidget()
         view_stack.addWidget(self.chart_area)
         view_stack.addWidget(self.time_map_area)

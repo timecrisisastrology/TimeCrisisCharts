@@ -84,7 +84,7 @@ class StyledButton(QPushButton):
             }
         """)
 
-class ChartDrawingWidget(QFrame):
+class ChartWidget(QFrame):
     """A custom widget for drawing the astrological chart."""
     def __init__(self, astro_font_name):
         super().__init__()
@@ -95,16 +95,20 @@ class ChartDrawingWidget(QFrame):
         # Chart data - will be populated by set_chart_data
         self.house_cusps = []
         self.display_houses = [] # Houses to draw (can be natal or return)
-        self.planets = {} # Inner wheel planets
-        self.outer_planets = None # Outer wheel planets
+        self.natal_planets = {} # Inner wheel planets
+        self.transit_planets = None # Outer wheel planets
         self.aspects = []
         self._setup_glyph_data()
 
     def set_chart_data(self, natal_planets, natal_houses, aspects, outer_planets=None, display_houses=None):
-        self.planets = natal_planets
+        """
+        Sets the data for the chart. The 'outer_planets' parameter is used for the
+        second wheel, which could be transits, progressions, etc.
+        """
+        self.natal_planets = natal_planets
         self.house_cusps = natal_houses
         self.aspects = aspects
-        self.outer_planets = outer_planets
+        self.transit_planets = outer_planets
         self.display_houses = display_houses if display_houses is not None else natal_houses
         self.update()
 
@@ -179,391 +183,245 @@ class ChartDrawingWidget(QFrame):
             self._draw_glow_text(painter, draw_point, glyph, font, glyph_color)
             painter.restore()
 
-    def _calculate_rings(self, base_radius, is_biwheel):
+    def _calculate_dynamic_layout(self, wheels, width, height):
         """
-        Defines the precise inner and outer boundaries for all concentric data rings.
-        This is the core of the professional layout system. It uses fixed-width lanes
-        to guarantee separation and prevent overlaps, addressing user feedback.
+        Calculates the layout of the chart wheels based on the user's test script.
+        This uses a relative 0-1 coordinate system which is then scaled by the
+        widget's dimensions.
         """
-        rings = {}
-        # Define fixed widths for each lane. These are pixel values.
-        # Adjusted for clarity and to meet user requirements.
-        zodiac_width = 40
-        cusp_label_width = 25 # For degree labels like 25° 45'
-        planet_glyph_width = 30 # For planet symbols ♃
-        planet_info_width = 35  # For text like "15° ♈ 10' R"
-        separator_width = 5     # A clean gutter between wheels
-        house_number_width = 20 # A slim ring for house numbers 1-12
+        # --- CONFIGURATION ---
+        # These values are relative to the chart radius
+        AREA_START_RADIUS = 0.15 # Outer edge of the fixed house number circle
+        AREA_END_RADIUS = 0.9    # Inner edge of the fixed zodiac circle
+        WHEEL_THICKNESS = 0.33   # The relative thickness for each planet wheel
+        GUTTER_THICKNESS = 0.02  # The gap between wheels
 
-        # --- Ring Definition from the Outside-In ---
+        # The base radius is the main scaling factor for all elements
+        base_radius = min(width, height) / 2
 
-        # 1. Cusp Labels Ring (Outermost)
-        # This ring sits *outside* the main zodiac wheel for cusp degree labels.
-        rings['cusp_labels'] = {'outer': base_radius + cusp_label_width, 'inner': base_radius}
+        layout = {}
+        wheels_to_draw = [w for w in wheels if w['planets']]
 
-        # 2. Zodiac Ring
-        # The ring containing the zodiac sign glyphs (♈, ♉, etc.)
-        current_outer = base_radius
-        rings['zodiac'] = {'outer': current_outer, 'inner': current_outer - zodiac_width}
-        current_outer -= zodiac_width
+        num_wheels = len(wheels_to_draw)
 
-        if is_biwheel:
-            # --- Bi-Wheel Layout (e.g., Natal + Transits) ---
-            # This layout provides two distinct, separated wheels for planets.
+        # --- SCALED RADII ---
+        # Convert relative radii to absolute pixel values
+        layout['zodiac_signs'] = {
+            'inner': AREA_END_RADIUS * base_radius,
+            'outer': 1.0 * base_radius
+        }
+        layout['house_numbers_ring'] = {
+            'inner': (AREA_START_RADIUS - 0.02) * base_radius, # A bit of space
+            'outer': AREA_START_RADIUS * base_radius
+        }
+        layout['house_numbers_text'] = {'radius': 0.13 * base_radius}
+        layout['aspect_grid'] = {'radius': layout['house_numbers_ring']['inner']}
 
-            # 3a. Outer Wheel (e.g., Transits)
-            rings['outer_planets_info'] = {'outer': current_outer, 'inner': current_outer - planet_info_width}
-            current_outer -= planet_info_width
-            rings['outer_planets_glyphs'] = {'outer': current_outer, 'inner': current_outer - planet_glyph_width}
-            current_outer -= planet_glyph_width
+        if num_wheels == 0:
+            return layout
 
-            # 4a. Separator (Gutter)
-            rings['separator'] = {'outer': current_outer, 'inner': current_outer - separator_width}
-            current_outer -= separator_width
+        # --- DYNAMIC WHEEL CALCULATION ---
+        TOTAL_AVAILABLE_SPACE = (AREA_END_RADIUS - AREA_START_RADIUS) * base_radius
 
-            # 5a. Inner Wheel (e.g., Natal)
-            rings['inner_planets_info'] = {'outer': current_outer, 'inner': current_outer - planet_info_width}
-            current_outer -= planet_info_width
-            rings['inner_planets_glyphs'] = {'outer': current_outer, 'inner': current_outer - planet_glyph_width}
-            current_outer -= planet_glyph_width
+        # Calculate the total required space for all wheels and gutters
+        total_wheel_space = (num_wheels * WHEEL_THICKNESS * base_radius)
+        total_gutter_space = (max(0, num_wheels - 1) * GUTTER_THICKNESS * base_radius)
+        total_required_space = total_wheel_space + total_gutter_space
 
+        # If the required space is more than available, scale down the wheel thickness
+        if total_required_space > TOTAL_AVAILABLE_SPACE:
+            scale_factor = TOTAL_AVAILABLE_SPACE / total_required_space
+            scaled_wheel_thickness = WHEEL_THICKNESS * base_radius * scale_factor
+            scaled_gutter_thickness = GUTTER_THICKNESS * base_radius * scale_factor
         else:
-            # --- Single-Wheel Layout (e.g., Natal Only) ---
-            # Give slightly more space since there's no second wheel.
-            single_glyph_width = 45
-            single_info_width = 45
+            scaled_wheel_thickness = WHEEL_THICKNESS * base_radius
+            scaled_gutter_thickness = GUTTER_THICKNESS * base_radius
 
-            # 3b. Planet Info and Glyphs
-            rings['inner_planets_info'] = {'outer': current_outer, 'inner': current_outer - single_info_width}
-            current_outer -= single_info_width
-            rings['inner_planets_glyphs'] = {'outer': current_outer, 'inner': current_outer - single_glyph_width}
-            current_outer -= single_glyph_width
+        # Distribute the wheels from the outside in
+        current_outer_radius = AREA_END_RADIUS * base_radius
 
-        # 6. House Numbers Ring (Moved significantly inward as per user request)
-        # This ring is now much closer to the center.
-        house_numbers_outer_radius = rings['inner_planets_glyphs']['inner'] * 0.7 if is_biwheel else rings['inner_planets_glyphs']['inner'] * 0.6
-        rings['house_numbers'] = {'outer': house_numbers_outer_radius, 'inner': house_numbers_outer_radius - house_number_width}
+        # Iterate through the wheels in reverse to place them from outside to inside
+        for wheel in reversed(wheels_to_draw):
+            ring_outer = current_outer_radius
+            ring_inner = ring_outer - scaled_wheel_thickness
+            layout[wheel['name']] = {'inner': ring_inner, 'outer': ring_outer}
+            # Move to the next position, leaving a gutter
+            current_outer_radius = ring_inner - scaled_gutter_thickness
 
-        # 7. Aspect Grid (Center)
-        # The aspect grid fills the remaining space inside the house number ring.
-        rings['aspect_grid'] = {'outer': rings['house_numbers']['inner'], 'inner': 0}
-
-        return rings
+        return layout
 
     def paintEvent(self, event):
         super().paintEvent(event)
+        if not self.natal_planets:
+            return
+
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # Invert the Y-axis for a standard Cartesian coordinate system (0,0 at bottom-left)
         painter.translate(0, self.height())
         painter.scale(1, -1)
 
-        neon_pink = QColor("#FF01F9")
-        neon_blue = QColor("#3DF6FF")
         center = QPointF(self.width() / 2, self.height() / 2)
-        base_radius = min(self.width(), self.height()) / 2 * 0.9
+        angle_offset = 180 - self.display_houses[0]
 
-        angle_offset = 180 - self.display_houses[0] if self.display_houses else 0
-        is_biwheel = self.outer_planets is not None
+        # --- 1. Define Wheels and Calculate Layout ---
+        wheels_to_draw = [{'name': 'natal', 'planets': self.natal_planets}]
+        if self.transit_planets:
+            wheels_to_draw.append({'name': 'transits', 'planets': self.transit_planets})
 
-        # --- 1. Architect the Layout using the Ring System ---
-        rings = self._calculate_rings(base_radius, is_biwheel)
+        layout = self._calculate_dynamic_layout(wheels_to_draw, self.width(), self.height())
 
-        # --- 2. Draw Structural Circles ---
-        path = QPainterPath(); path.addEllipse(center, rings['zodiac']['outer'], rings['zodiac']['outer']); self._draw_glow_path(painter, path, neon_pink, 2)
-        path = QPainterPath(); path.addEllipse(center, rings['zodiac']['inner'], rings['zodiac']['inner']); self._draw_glow_path(painter, path, neon_pink, 2)
-        path = QPainterPath(); path.addEllipse(center, rings['aspect_grid']['outer'], rings['aspect_grid']['outer']); self._draw_glow_path(painter, path, neon_pink, 2)
-        if is_biwheel:
-            path = QPainterPath(); path.addEllipse(center, rings['separator']['outer'], rings['separator']['outer']); self._draw_glow_path(painter, path, neon_pink, 2)
+        # --- 2. Draw Chart Scaffolding (Structural Lines) ---
+        self._draw_chart_scaffolding(painter, center, layout, angle_offset)
 
-        # --- 3. Draw Zodiac Glyphs and Dividers ---
-        self._draw_zodiac_glyphs(painter, center, rings['zodiac'], neon_blue, angle_offset)
-        for i in range(12):
-            angle_rad = math.radians(i * 30 + angle_offset)
-            x_start = center.x() + rings['zodiac']['inner'] * math.cos(angle_rad)
-            y_start = center.y() + rings['zodiac']['inner'] * math.sin(angle_rad)
-            x_end = center.x() + rings['zodiac']['outer'] * math.cos(angle_rad)
-            y_end = center.y() + rings['zodiac']['outer'] * math.sin(angle_rad)
-            divider_path = QPainterPath(); divider_path.moveTo(x_start, y_start); divider_path.lineTo(x_end, y_end)
-            self._draw_glow_path(painter, divider_path, neon_blue, 1)
+        # --- 3. Draw Zodiac Glyphs ---
+        self._draw_zodiac_glyphs(painter, center, layout['zodiac_signs'], QColor("#3DF6FF"), angle_offset)
 
-        # --- 4. Draw House Cusp Lines and Labels ---
-        self._draw_cusp_labels(painter, center, rings['cusp_labels'], neon_blue, angle_offset)
-        for cusp_deg in self.display_houses:
-            angle_rad = math.radians(cusp_deg + angle_offset)
-            x_start = center.x() + rings['aspect_grid']['outer'] * math.cos(angle_rad)
-            y_start = center.y() + rings['aspect_grid']['outer'] * math.sin(angle_rad)
-            x_end = center.x() + rings['zodiac']['outer'] * math.cos(angle_rad)
-            y_end = center.y() + rings['zodiac']['outer'] * math.sin(angle_rad)
+        # --- 4. Draw House Numbers ---
+        self._draw_house_numbers(painter, center, layout, QColor("#3DF6FF"), angle_offset)
+
+        # --- 5. Draw Planets for Each Wheel ---
+        for wheel in wheels_to_draw:
+            if wheel['name'] in layout:
+                self._draw_wheel_planets(painter, center, wheel, layout[wheel['name']], angle_offset)
+
+        # --- 6. Draw Aspect Lines ---
+        self._draw_aspects(painter, center, layout['aspect_grid']['radius'], angle_offset)
+
+    def _format_degree_text(self, degree):
+        """Formats a decimal degree into a string with degree, sign, and minute."""
+        zodiac_signs = ['Ari', 'Tau', 'Gem', 'Can', 'Leo', 'Vir', 'Lib', 'Sco', 'Sag', 'Cap', 'Aqu', 'Pis']
+        sign_index = int(degree / 30)
+        sign_name = zodiac_signs[sign_index]
+        deg_in_sign = int(degree % 30)
+        minutes = int((degree % 1) * 60)
+        return f"{deg_in_sign}° {sign_name} {minutes:02d}'"
+
+    def _draw_chart_scaffolding(self, painter, center, layout, angle_offset):
+        """Draws the primary circles and lines for the chart structure."""
+        line_color = QColor("#A372FF")
+
+        # Draw outer zodiac circle, inner zodiac circle, and house number circle
+        path = QPainterPath(); path.addEllipse(center, layout['zodiac_signs']['outer'], layout['zodiac_signs']['outer']); self._draw_glow_path(painter, path, line_color, 2)
+        path = QPainterPath(); path.addEllipse(center, layout['zodiac_signs']['inner'], layout['zodiac_signs']['inner']); self._draw_glow_path(painter, path, line_color, 1)
+        path = QPainterPath(); path.addEllipse(center, layout['house_numbers_ring']['outer'], layout['house_numbers_ring']['outer']); self._draw_glow_path(painter, path, line_color, 1)
+
+        # Draw the circles for each dynamic wheel that has been calculated
+        for wheel_name in ['natal', 'transits', 'progressions']: # Add other wheel types if needed
+            if wheel_name in layout:
+                wheel_outer_radius = layout[wheel_name]['outer']
+                path = QPainterPath(); path.addEllipse(center, wheel_outer_radius, wheel_outer_radius); self._draw_glow_path(painter, path, line_color, 1)
+
+        # Draw house cusp lines
+        for i, cusp_degree in enumerate(self.display_houses[:12]):
+            angle_rad = math.radians(cusp_degree + angle_offset)
+            is_axis = i in [0, 3, 6, 9] # ASC, IC, DSC, MC
+
+            x_start = center.x() + layout['house_numbers_ring']['outer'] * math.cos(angle_rad)
+            y_start = center.y() + layout['house_numbers_ring']['outer'] * math.sin(angle_rad)
+            x_end = center.x() + layout['zodiac_signs']['inner'] * math.cos(angle_rad)
+            y_end = center.y() + layout['zodiac_signs']['inner'] * math.sin(angle_rad)
+
             cusp_path = QPainterPath(); cusp_path.moveTo(x_start, y_start); cusp_path.lineTo(x_end, y_end)
-            self._draw_glow_path(painter, cusp_path, neon_pink, 1)
+            self._draw_glow_path(painter, cusp_path, line_color, 3 if is_axis else 1)
 
-        # --- 5. Draw House Numbers ---
-        self._draw_house_numbers(painter, center, rings['house_numbers'], neon_blue, angle_offset)
+    def _draw_wheel_planets(self, painter, center, wheel_data, ring, angle_offset):
+        """Draws planets for a single wheel using the definitive layout algorithm."""
+        glyph_font = QFont(self.astro_font_name, 24)
+        glyph_font.setStyleStrategy(QFont.StyleStrategy.NoFontMerging)
+        text_font = QFont("Titillium Web", 11)
+        font_color = QColor("#E0D2FF")
 
-        # --- 6. Draw Planet Glyphs and Info ---
-        if is_biwheel:
-            # Draw outer (e.g., transiting) planets and their info in their dedicated rings
-            self._draw_planets(painter, center, rings['outer_planets_glyphs'], rings['outer_planets_info'], self.outer_planets, angle_offset)
-            # Draw inner (e.g., natal) planets and their info in their dedicated rings
-            self._draw_planets(painter, center, rings['inner_planets_glyphs'], rings['inner_planets_info'], self.planets, angle_offset)
-        else:
-            # Draw single-wheel planets and info
-            self._draw_planets(painter, center, rings['inner_planets_glyphs'], rings['inner_planets_info'], self.planets, angle_offset)
+        # --- 1. Clustering Logic ---
+        CLUSTER_THRESHOLD = 8 # Degrees
+        planets_list = []
+        for name, (degree, speed) in wheel_data['planets'].items():
+            if name in self.planet_glyphs:
+                planets_list.append({
+                    'name': name,
+                    'deg': degree,
+                    'glyph': self.planet_glyphs[name],
+                    'label': self._format_degree_text(degree)
+                })
 
-        # --- 7. Draw Aspect Lines ---
-        aspect_radius = rings['aspect_grid']['outer'] * 0.95 # Place aspect lines inside the aspect grid
-        aspect_colors = {
-            'Trine': QColor(61, 246, 255, 150), 'Sextile': QColor(61, 246, 255, 150),
-            'Square': QColor(255, 1, 249, 150), 'Opposition': QColor(255, 1, 249, 150),
-            'Conjunction': QColor(200, 200, 200, 150)
-        }
-        for aspect_info in self.aspects:
-            p1_name, aspect_name, p2_name = aspect_info['p1'], aspect_info['aspect'], aspect_info['p2']
-            if p1_name in self.planets and p2_name in self.planets:
-                p1_pos, p2_pos = self.planets[p1_name][0], self.planets[p2_name][0]
-                color = aspect_colors.get(aspect_name)
-                if color:
-                    pen = QPen(color, 1.5, Qt.PenStyle.SolidLine)
-                    painter.setPen(pen)
-                    p1_rad = math.radians(p1_pos + angle_offset)
-                    p1_x = center.x() + aspect_radius * math.cos(p1_rad)
-                    p1_y = center.y() + aspect_radius * math.sin(p1_rad)
-                    p2_rad = math.radians(p2_pos + angle_offset)
-                    p2_x = center.x() + aspect_radius * math.cos(p2_rad)
-                    p2_y = center.y() + aspect_radius * math.sin(p2_rad)
-                    painter.drawLine(QPointF(p1_x, p1_y), QPointF(p2_x, p2_y))
-
-    def _draw_planets(self, painter, center, glyph_ring, info_ring, planets, angle_offset):
-        """
-        Draws planet glyphs and their labels within dedicated, non-overlapping rings.
-        - Glyphs are drawn and staggered within the 'glyph_ring'.
-        - Text info is drawn and staggered within the 'info_ring'.
-        - Includes logic to prevent labels from overlapping house cusp lines.
-        """
-        planet_font = QFont(self.astro_font_name, 20)
-        planet_font.setStyleStrategy(QFont.StyleStrategy.NoFontMerging)
-        label_font = QFont("Titillium Web", 9)
-
-        if not planets: return
-
-        # --- 1. Graph-based Clustering ---
-        sorted_planets = sorted(planets.items(), key=lambda item: item[1][0])
-        num_planets = len(sorted_planets)
-        adj = [[] for _ in range(num_planets)]
-        CONJUNCTION_THRESHOLD = 12.0
-
-        for i in range(num_planets):
-            for j in range(i + 1, num_planets):
-                p1_lon = sorted_planets[i][1][0]
-                p2_lon = sorted_planets[j][1][0]
-                distance = abs(p1_lon - p2_lon)
-                distance = min(distance, 360 - distance)
-                if distance < CONJUNCTION_THRESHOLD:
-                    adj[i].append(j)
-                    adj[j].append(i)
-
-        visited = [False] * num_planets
+        planets_list.sort(key=lambda p: p['deg'])
         clusters = []
-        for i in range(num_planets):
-            if not visited[i]:
-                current_cluster = []
-                q = [i]
-                visited[i] = True
-                while q:
-                    u = q.pop(0)
-                    current_cluster.append(sorted_planets[u])
-                    for v in adj[u]:
-                        if not visited[v]:
-                            visited[v] = True
-                            q.append(v)
-                clusters.append(sorted(current_cluster, key=lambda item: item[1][0]))
+        if planets_list:
+            current_cluster = [planets_list[0]]
+            for i in range(1, len(planets_list)):
+                diff = abs(planets_list[i]['deg'] - planets_list[i-1]['deg'])
+                if diff > 180: diff = 360 - diff
+                if diff <= CLUSTER_THRESHOLD:
+                    current_cluster.append(planets_list[i])
+                else:
+                    clusters.append(current_cluster)
+                    current_cluster = [planets_list[i]]
+            clusters.append(current_cluster)
 
-        # --- 2. Drawing with Strict Ring Boundaries & Collision Avoidance ---
+        # --- 2. New Layout and Drawing Logic ---
         for cluster in clusters:
             num_in_cluster = len(cluster)
-            is_cluster = num_in_cluster > 1
+            for i, planet in enumerate(cluster):
+                # --- Angular Spreading (side-by-side nudge) ---
+                angular_offset_nudge = 0
+                if num_in_cluster > 1:
+                    SPREAD_ANGLE = 5.0 # Degrees
+                    # Calculate the starting offset to center the cluster
+                    start_offset = - (num_in_cluster - 1) / 2.0 * SPREAD_ANGLE
+                    angular_offset_nudge = start_offset + (i * SPREAD_ANGLE)
 
-            for i, (name, position_data) in enumerate(cluster):
-                longitude = position_data[0]
-                planet_color = self.planet_colors.get(name, QColor("white"))
+                display_deg = planet['deg'] + angular_offset_nudge
+                angle_rad = math.radians(display_deg + angle_offset)
 
-                # --- Position and Draw Planet Glyph in its Ring ---
-                glyph_ring_thickness = glyph_ring['outer'] - glyph_ring['inner']
-                if is_cluster:
-                    # Stagger glyphs radially within their ring
-                    buffer = glyph_ring_thickness * 0.1
-                    usable_thickness = glyph_ring_thickness - (2 * buffer)
-                    t = i / (num_in_cluster - 1) if num_in_cluster > 1 else 0.5
-                    glyph_radius = (glyph_ring['outer'] - buffer) - (t * usable_thickness)
-                else:
-                    glyph_radius = (glyph_ring['inner'] + glyph_ring['outer']) / 2
+                # --- Radial Positioning (glyph out, text in) ---
+                # These are based on the user's test script for relative positioning
+                glyph_radius = ring['outer'] - ( (ring['outer'] - ring['inner']) * 0.25 )
+                text_radius = glyph_radius - ( (ring['outer'] - ring['inner']) * 0.40 )
 
-                glyph_angle_rad = math.radians(longitude + angle_offset)
-                glyph = self.planet_glyphs.get(name, '?')
-                fm_glyph = QFontMetrics(planet_font)
-                glyph_width = fm_glyph.horizontalAdvance(glyph)
+                # --- Draw the Glyph ---
+                fm_glyph = QFontMetrics(glyph_font)
+                glyph_width = fm_glyph.horizontalAdvance(planet['glyph'])
                 glyph_height = fm_glyph.height()
-
-                glyph_x = center.x() + glyph_radius * math.cos(glyph_angle_rad)
-                glyph_y = center.y() + glyph_radius * math.sin(glyph_angle_rad)
+                glyph_x = center.x() + glyph_radius * math.cos(angle_rad)
+                glyph_y = center.y() + glyph_radius * math.sin(angle_rad)
 
                 painter.save()
                 painter.translate(glyph_x, glyph_y)
-                painter.scale(1, -1)
-                self._draw_glow_text(painter, QPointF(-glyph_width / 2, glyph_height / 4), glyph, planet_font, planet_color)
+                painter.scale(1, -1) # Flip text right-side up
+                self._draw_glow_text(painter, QPointF(-glyph_width / 2, glyph_height / 4), planet['glyph'], glyph_font, font_color)
                 painter.restore()
 
-                # --- Position and Draw Position Label in its Ring ---
-                is_retrograde = position_data[1] < 0
-                retro_symbol = " \u211E" if is_retrograde else ""
-                label_text = f"{format_longitude(longitude, show_sign=True)}{retro_symbol}"
-                fm_label = QFontMetrics(label_font)
-                label_width = fm_label.horizontalAdvance(label_text)
-
-                info_ring_thickness = info_ring['outer'] - info_ring['inner']
-                if is_cluster:
-                    # Stagger info labels in sync with their glyphs
-                    buffer = info_ring_thickness * 0.1
-                    usable_thickness = info_ring_thickness - (2 * buffer)
-                    t = i / (num_in_cluster - 1) if num_in_cluster > 1 else 0.5
-                    label_radius = (info_ring['outer'] - buffer) - (t * usable_thickness)
-                else:
-                    label_radius = (info_ring['inner'] + info_ring['outer']) / 2
-
-                # --- Cusp Collision Avoidance for Labels ---
-                label_angle_deg = longitude
-                avoidance_offset_deg = 0
-                min_dist_to_cusp = 3 # Minimum degrees of separation from a cusp line
-                for cusp_deg in self.display_houses:
-                    dist = abs((label_angle_deg % 360) - (cusp_deg % 360))
-                    dist = min(dist, 360 - dist)
-                    if dist < min_dist_to_cusp:
-                        # The label is too close to a cusp line. Nudge it.
-                        direction = 1 if (label_angle_deg - cusp_deg + 360) % 360 < 180 else -1
-                        avoidance_offset_deg = direction * (min_dist_to_cusp - dist)
-                        break # Apply the first correction needed
-
-                final_label_angle_deg = label_angle_deg + avoidance_offset_deg + angle_offset
-                label_angle_rad = math.radians(final_label_angle_deg)
-
-                label_x = center.x() + label_radius * math.cos(label_angle_rad)
-                label_y = center.y() + label_radius * math.sin(label_angle_rad)
+                # --- THE DEFINITIVE ROTATION ALGORITHM ---
+                fm_text = QFontMetrics(text_font)
+                text_width = fm_text.horizontalAdvance(planet['label'])
+                text_height = fm_text.height()
+                text_x = center.x() + text_radius * math.cos(angle_rad)
+                text_y = center.y() + text_radius * math.sin(angle_rad)
 
                 painter.save()
-                painter.translate(label_x, label_y)
-                painter.scale(1, -1)
+                painter.translate(text_x, text_y)
+                painter.scale(1, -1) # Flip text right-side up
 
-                effective_angle = final_label_angle_deg
-                painter.rotate(-effective_angle)
+                # The rotation is the angle of the text's position, adjusted to be radial
+                rotation = display_deg + angle_offset
 
-                if 90 < effective_angle % 360 < 270:
-                    painter.rotate(180)
-                    final_draw_point = QPointF(-label_width, fm_label.ascent() / 2)
-                else:
-                    final_draw_point = QPointF(0, fm_label.ascent() / 2)
+                # If it's on the left side of the chart, flip it to be readable
+                if 90 < (display_deg + angle_offset) % 360 < 270:
+                    rotation += 180
 
-                self._draw_glow_text(painter, final_draw_point, label_text, label_font, planet_color)
+                painter.rotate(-rotation)
+
+                # Anchor the text so it rotates around its center
+                draw_point = QPointF(-text_width / 2, text_height / 4)
+                self._draw_glow_text(painter, draw_point, planet['label'], text_font, font_color)
                 painter.restore()
 
-    def _draw_cusp_labels(self, painter, center, ring, color, angle_offset):
-        """
-        Draws the degree labels for each house cusp, placing them within a dedicated ring.
-        Includes a more robust collision avoidance system.
-        """
-        if not self.display_houses: return
-        label_font = QFont("Titillium Web", 10); label_font.setBold(True)
-        font_metrics = QFontMetrics(label_font)
-        drawn_label_rects = []
-
-        # Use a list of tuples to handle sorting and modification
-        cusps_to_draw = []
-        for i, cusp_deg in enumerate(self.display_houses):
-            deg_in_sign = cusp_deg % 30
-            minutes = (deg_in_sign - int(deg_in_sign)) * 60
-            text = f"{int(deg_in_sign)}°{int(minutes)}'"
-            # Make ASC/MC labels more prominent
-            if i == 0: text = f"ASC {text}"
-            if i == 9: text = f"MC {text}"
-            cusps_to_draw.append([cusp_deg, text])
-
-        for i in range(len(cusps_to_draw)):
-            cusp_deg, text = cusps_to_draw[i]
-            angle_with_offset = cusp_deg + angle_offset
-
-            # Start placement in the middle of the ring
-            label_radius = (ring['inner'] + ring['outer']) / 2
-            max_radius = ring['outer'] + 10 # Allow pushing slightly outside if necessary
-            min_radius = ring['inner'] - 10 # Allow pushing slightly inside
-
-            # --- Collision Avoidance Loop ---
-            attempt = 0
-            while attempt < 10: # Limit attempts to prevent infinite loops
-                angle_rad = math.radians(angle_with_offset)
-                x = center.x() + label_radius * math.cos(angle_rad)
-                y = center.y() + label_radius * math.sin(angle_rad)
-
-                text_width = font_metrics.horizontalAdvance(text)
-                text_height = font_metrics.height()
-
-                # Calculate the bounding rectangle of the rotated text
-                transform = QTransform()
-                transform.translate(x, y)
-                effective_angle = angle_with_offset % 360
-                rotation_angle = effective_angle - 90
-                if 90 < effective_angle < 270:
-                    transform.rotate(-(rotation_angle + 180))
-                else:
-                    transform.rotate(-rotation_angle)
-                # Add a small buffer to the rectangle for better spacing
-                buffer = 2
-                untransformed_rect = QRectF(-text_width / 2 - buffer, -text_height / 2 - buffer, text_width + 2*buffer, text_height + 2*buffer)
-                current_rect = transform.mapRect(untransformed_rect)
-
-                # Check for overlap with previously drawn labels
-                is_overlapping = any(current_rect.intersects(r) for r in drawn_label_rects)
-
-                if not is_overlapping:
-                    drawn_label_rects.append(current_rect)
-                    break # Position is good, exit the loop
-
-                # If overlapping, try a different radius
-                # Alternate pushing outwards and inwards
-                if attempt % 2 == 0:
-                    label_radius += (attempt + 1) * 3
-                    if label_radius > max_radius: label_radius = max_radius
-                else:
-                    label_radius -= (attempt + 1) * 3
-                    if label_radius < min_radius: label_radius = min_radius
-                attempt += 1
-
-            # --- Draw the label at the final, best-effort position ---
-            angle_rad = math.radians(angle_with_offset)
-            x = center.x() + label_radius * math.cos(angle_rad)
-            y = center.y() + label_radius * math.sin(angle_rad)
-            text_width = font_metrics.horizontalAdvance(text)
-
-            painter.save()
-            painter.translate(x, y)
-            painter.scale(1, -1)
-
-            effective_angle = angle_with_offset % 360
-            rotation_angle = effective_angle - 90
-            if 90 < effective_angle < 270:
-                painter.rotate(-(rotation_angle + 180))
-            else:
-                painter.rotate(-rotation_angle)
-
-            draw_point = QPointF(-text_width / 2, font_metrics.height() / 4)
-            self._draw_glow_text(painter, draw_point, text, label_font, color)
-            painter.restore()
-
-    def _draw_house_numbers(self, painter, center, ring, color, angle_offset):
+    def _draw_house_numbers(self, painter, center, layout, color, angle_offset):
         """Draws the house numbers centered within their dedicated ring."""
         if not self.display_houses: return
-        house_font = QFont("Titillium Web", 10)
-        house_font.setBold(True)
-        # Place numbers in the center of their designated ring
-        placement_radius = (ring['inner'] + ring['outer']) / 2
+        house_font = QFont("Titillium Web", 14)
+        placement_radius = layout['house_numbers_text']['radius']
 
         for i in range(12):
             start_angle = self.display_houses[i]
@@ -587,6 +445,29 @@ class ChartDrawingWidget(QFrame):
 
             self._draw_glow_text(painter, QPointF(-text_width / 2, text_height / 4), text, house_font, color)
             painter.restore()
+
+    def _draw_aspects(self, painter, center, radius, angle_offset):
+        """Draws the aspect lines in the center of the chart."""
+        aspect_colors = {
+            'Trine': QColor(61, 246, 255, 150), 'Sextile': QColor(61, 246, 255, 150),
+            'Square': QColor(255, 1, 249, 150), 'Opposition': QColor(255, 1, 249, 150),
+            'Conjunction': QColor(200, 200, 200, 150)
+        }
+        for aspect_info in self.aspects:
+            p1_name, aspect_name, p2_name = aspect_info['p1'], aspect_info['aspect'], aspect_info['p2']
+            if p1_name in self.natal_planets and p2_name in self.natal_planets:
+                p1_pos, p2_pos = self.natal_planets[p1_name][0], self.natal_planets[p2_name][0]
+                color = aspect_colors.get(aspect_name)
+                if color:
+                    pen = QPen(color, 1.5, Qt.PenStyle.SolidLine)
+                    painter.setPen(pen)
+                    p1_rad = math.radians(p1_pos + angle_offset)
+                    p1_x = center.x() + radius * math.cos(p1_rad)
+                    p1_y = center.y() + radius * math.sin(p1_rad)
+                    p2_rad = math.radians(p2_pos + angle_offset)
+                    p2_x = center.x() + radius * math.cos(p2_rad)
+                    p2_y = center.y() + radius * math.sin(p2_rad)
+                    painter.drawLine(QPointF(p1_x, p1_y), QPointF(p2_x, p2_y))
 
     def _draw_glow_path(self, painter, path, color, width):
         """
