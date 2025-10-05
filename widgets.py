@@ -281,6 +281,9 @@ class ChartWidget(QFrame):
         # --- 4. Draw House Numbers ---
         self._draw_house_numbers(painter, center, layout, QColor("#3DF6FF"), angle_offset)
 
+        # --- 4a. Draw House Cusp Labels ---
+        self._draw_house_cusp_labels(painter, center, layout, QColor("#3DF6FF"), angle_offset)
+
         # --- 5. Draw Planets for Each Wheel ---
         for wheel in wheels_to_draw:
             if wheel['name'] in layout:
@@ -445,6 +448,70 @@ class ChartWidget(QFrame):
 
             self._draw_glow_text(painter, QPointF(-text_width / 2, text_height / 4), text, house_font, color)
             painter.restore()
+
+    def _draw_house_cusp_labels(self, painter, center, layout, color, angle_offset):
+        """Draws the house cusp degree labels outside the zodiac, with overlap prevention."""
+        if not self.display_houses: return
+        text_font = QFont("Titillium Web", 10)
+        font_color = QColor("#E0D2FF")
+        placement_radius = layout['zodiac_signs']['outer'] + 10 # Just outside the zodiac ring
+
+        # 1. Prepare cusp data
+        cusps = []
+        for i, degree in enumerate(self.display_houses[:12]):
+            cusps.append({
+                'label': self._format_degree_text(degree),
+                'deg': degree
+            })
+
+        # 2. Clustering logic (adapted from planet drawing)
+        CLUSTER_THRESHOLD = 12 # Degrees - larger threshold for text labels
+        clusters = []
+        if cusps:
+            current_cluster = [cusps[0]]
+            for i in range(1, len(cusps)):
+                diff = abs(cusps[i]['deg'] - cusps[i-1]['deg'])
+                if diff > 180: diff = 360 - diff # Handle wrap-around
+                if diff <= CLUSTER_THRESHOLD:
+                    current_cluster.append(cusps[i])
+                else:
+                    clusters.append(current_cluster)
+                    current_cluster = [cusps[i]]
+            clusters.append(current_cluster)
+
+        # 3. Drawing with spreading
+        for cluster in clusters:
+            num_in_cluster = len(cluster)
+            for i, cusp in enumerate(cluster):
+                # Apply angular spreading if in a cluster
+                angular_offset_nudge = 0
+                if num_in_cluster > 1:
+                    SPREAD_ANGLE = 10.0 # Degrees to nudge each label by
+                    start_offset = - (num_in_cluster - 1) / 2.0 * SPREAD_ANGLE
+                    angular_offset_nudge = start_offset + (i * SPREAD_ANGLE)
+
+                display_deg = cusp['deg'] + angular_offset_nudge
+                angle_rad = math.radians(display_deg + angle_offset)
+
+                fm_text = QFontMetrics(text_font)
+                text_width = fm_text.horizontalAdvance(cusp['label'])
+                text_height = fm_text.height()
+
+                text_x = center.x() + placement_radius * math.cos(angle_rad)
+                text_y = center.y() + placement_radius * math.sin(angle_rad)
+
+                painter.save()
+                painter.translate(text_x, text_y)
+                painter.scale(1, -1)
+
+                rotation = display_deg + angle_offset
+                if 90 < (display_deg + angle_offset) % 360 < 270:
+                    rotation += 180
+
+                painter.rotate(-rotation)
+                draw_point = QPointF(-text_width / 2, text_height / 4)
+                self._draw_glow_text(painter, draw_point, cusp['label'], text_font, font_color)
+                painter.restore()
 
     def _draw_aspects(self, painter, center, radius, angle_offset):
         """Draws the aspect lines in the center of the chart."""
