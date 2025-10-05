@@ -13,7 +13,7 @@ from timezonefinder import TimezoneFinder
 import swisseph as swe
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QVBoxLayout, QHBoxLayout, QLineEdit, QStackedWidget, QFileDialog, QComboBox, QMessageBox, QFrame, QMenu, QInputDialog)
 from PyQt6.QtCore import QTimer, Qt
-from PyQt6.QtGui import QPalette, QColor, QFontDatabase, QAction
+from PyQt6.QtGui import QPalette, QColor, QFontDatabase, QAction, QFont
 from widgets import InfoPanel, StyledButton, ChartWidget
 from time_map_widget import TimeMapWidget
 from astro_engine import (
@@ -297,7 +297,11 @@ class MainWindow(QMainWindow):
         """Creates the central chart display area."""
         view_stack = QStackedWidget()
         self.chart_area = ChartWidget(ASTRO_FONT_NAME)
-        self.time_map_area = TimeMapWidget()
+
+        # Create the specific QFont object for the astrological glyphs
+        astro_font = QFont(ASTRO_FONT_NAME, 14) if ASTRO_FONT_NAME else None
+
+        self.time_map_area = TimeMapWidget(astro_font=astro_font)
         view_stack.addWidget(self.chart_area)
         view_stack.addWidget(self.time_map_area)
         return view_stack
@@ -400,8 +404,11 @@ class MainWindow(QMainWindow):
                 self.set_chart_type('lunar_return')
 
     def show_time_map_view(self):
-        self.time_map_area.set_chart_data("Jane Doe", self.sample_birth_date, self.natal_planets, self.natal_houses)
-        self.view_stack.setCurrentWidget(self.time_map_area) # Switch to time map view
+        # Pass the current chart data to the time map view when switching to it.
+        # This ensures it always shows the most up-to-date information.
+        name = self.name_input.text()
+        self.time_map_area.set_chart_data(name, self.sample_birth_date, self.natal_planets, self.natal_houses)
+        self.view_stack.setCurrentWidget(self.time_map_area)
 
     def handle_animation_step(self, direction):
         """
@@ -519,6 +526,10 @@ class MainWindow(QMainWindow):
             # 6. Update the chart display
             print(f"Successfully generated new chart for {name} in {location.address}.")
             self.update_chart()
+
+            # 7. If the time map is currently visible, update it with the new data as well
+            if self.view_stack.currentWidget() == self.time_map_area:
+                self.time_map_area.set_chart_data(name, self.sample_birth_date, self.natal_planets, self.natal_houses)
 
         except ValueError:
             QMessageBox.critical(self, "Error", "Invalid Date or Time Format. Please use YYYY-MM-DD for date and HH:MM for time (e.g., 08:30).")

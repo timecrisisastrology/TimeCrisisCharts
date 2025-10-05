@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from PyQt6.QtWidgets import QFrame, QToolTip
-from PyQt6.QtGui import QFont, QColor, QPainter, QPen, QBrush, QPainterPath
+from PyQt6.QtGui import (QFont, QFontMetrics, QColor, QPainter, QPen, QBrush,
+                         QPainterPath)
 from PyQt6.QtCore import Qt, QPointF, QRectF
 from astro_engine import (
     calculate_secondary_progressions,
@@ -10,13 +11,29 @@ from astro_engine import (
     format_longitude
 )
 
+# --- Glyph Map for Astrological Symbols ---
+# This maps the names used in the engine to the correct Unicode characters
+# in the "EnigmaAstrology2.ttf" font.
+GLYPH_MAP = {
+    # Planets
+    'Sun': '\uE50A', 'Moon': '\uE50B', 'Mercury': '\uE50C', 'Venus': '\uE50D',
+    'Mars': '\uE50E', 'Jupiter': '\uE50F', 'Saturn': '\uE510', 'Uranus': '\uE511',
+    'Neptune': '\uE512', 'Pluto': '\uE513', 'Chiron': '\uE515', 'Lilith': '\uE51A',
+    'N. Node': '\uE518',
+    # Aspects
+    'Conjunction': '\uE520', 'Sextile': '\uE523', 'Square': '\uE524',
+    'Trine': '\uE525', 'Opposition': '\uE526',
+    # Special Characters for Progressions
+    '(P)': '\uE530',  # Using a custom character for 'Progressed'
+}
+
 class TimelineGridWidget(QFrame):
-    """A dedicated widget for drawing the timeline grid and aspect lines based on the new design."""
-    def __init__(self):
+    """A dedicated widget for drawing the timeline grid and aspect events."""
+    def __init__(self, astro_font=None):
         super().__init__()
         self.setObjectName("timeline-grid")
         self.setFrameShape(QFrame.Shape.StyledPanel)
-        self.setMinimumHeight(600) # Increased height for new layout
+        self.setMinimumHeight(600)
         self.setMouseTracking(True)
 
         # State & Data
@@ -26,45 +43,41 @@ class TimelineGridWidget(QFrame):
         self.natal_planets = {}
         self.natal_houses = []
         self.aspect_events = []
-        self.timeline_aspects_cache = {} # Cache for daily calculations
+        self.timeline_aspects_cache = {}
 
-        # Theming
+        # Theming & Fonts
+        self.astro_font = astro_font or QFont("Arial", 14) # Fallback font
         self.colors = {
             'grid': QColor("#3DF6FF"),
             'text': QColor("#94EBFF"),
-            'lunar': QColor("#00BFFF"),      # Blue for lunar progressions
-            'solar': QColor("#FF9933"),      # Neon orange for other progressions
+            'lunar': QColor("#00BFFF"),
+            'solar': QColor("#FF9933"),
             'transit': QColor("#3DF6FF"),
             'star': QColor("#FFFF00"),
-            'box_bg': QColor(255, 1, 249, 20), # Semi-transparent pink
+            'box_bg': QColor(255, 1, 249, 20),
         }
         self.fonts = {
             'year': QFont("TT Supermolot Neue Condensed", 14, QFont.Weight.Bold),
             'month': QFont("Titillium Web", 12),
             'grid': QFont("Titillium Web", 9),
-            'star': QFont("Titillium Web", 16, QFont.Weight.Bold)
+            'star': QFont("Titillium Web", 16, QFont.Weight.Bold),
+            'glyph': self.astro_font,
         }
 
     def set_chart_data(self, birth_date, natal_planets, natal_houses):
-        """Receives and stores natal data. Does not trigger calculation."""
         self.birth_date = birth_date
         self.natal_planets = natal_planets
         self.natal_houses = natal_houses
-        # Calculation is now triggered by set_view
 
     def set_view(self, start_date, months):
-        """Sets the view window for the timeline and triggers a full recalculation."""
         self.start_date = start_date
         self.months_to_display = months
         self._calculate_and_process_timeline()
         self.update()
 
-    # --- Data Calculation ---
-
     def _calculate_and_process_timeline(self):
-        """High-level method to run the full calculation and processing pipeline."""
         if not self.start_date or not self.birth_date:
-            return # Don't calculate if we don't have a date range or natal data
+            return
         self._calculate_daily_aspects()
         self._process_aspect_events()
 
@@ -80,22 +93,12 @@ class TimelineGridWidget(QFrame):
             transit_planets = {name: get_planet_position(current_date, pid) for name, pid in PLANETS.items()}
             progressed_planets = calculate_secondary_progressions(self.birth_date, current_date)
 
-            # Use an orb of 1.0 degree for all progressions, as requested
             prog_aspects = calculate_aspects(progressed_planets, 1.0)
-            # Only include aspects from the 5 major outer planets for transits
             major_transits = {p: transit_planets[p] for p in ['Jupiter', 'Saturn', 'Uranus', 'Neptune', 'Pluto']}
-            # Use an orb of 2.0 degrees for transits, as requested
             transit_aspects = find_cross_aspects(major_transits, self.natal_planets, 2.0)
 
-            # Filter lunar progressions to only include aspects to other PROGRESSED planets
-            lunar_prog_aspects = [
-                a for a in prog_aspects if a['p1'] == 'Moon' and a['p2'] != 'Moon'
-            ]
-
-            # Filter other progressions to exclude any involving the Moon
-            other_prog_aspects = [
-                a for a in prog_aspects if 'Moon' not in (a['p1'], a['p2'])
-            ]
+            lunar_prog_aspects = [a for a in prog_aspects if a['p1'] == 'Moon' and a['p2'] != 'Moon']
+            other_prog_aspects = [a for a in prog_aspects if 'Moon' not in (a['p1'], a['p2'])]
 
             self.timeline_aspects_cache[date_key] = {
                 'lunar_prog': lunar_prog_aspects,
@@ -106,143 +109,127 @@ class TimelineGridWidget(QFrame):
             }
 
     def _process_aspect_events(self):
-        """Processes the daily aspect cache into a list of continuous aspect events.
-        It groups multiple passes of a single transit into one event."""
         self.aspect_events = []
         if not self.timeline_aspects_cache: return
         num_days = self.months_to_display * 30
 
-        # Step 1: Generate raw events for all tiers, including multiple passes for transits
         raw_events = []
         for tier in ['lunar_prog', 'other_prog', 'transits']:
-            active_aspects = {}  # { name: {'start': date, 'orb_readings': [], 'data': aspect_dict} }
+            active_aspects = {}
             for i in range(num_days + 2):
                 current_date = self.start_date + timedelta(days=i - 1)
                 date_key = current_date.strftime('%Y-%m-%d')
                 day_data = self.timeline_aspects_cache.get(date_key, {})
                 todays_aspects = {a['name']: a for a in day_data.get(tier, [])}
 
-                # Check for newly started or ongoing aspects
                 for name, data in todays_aspects.items():
                     if name not in active_aspects:
-                        active_aspects[name] = {
-                            'start': current_date,
-                            'orb_readings': [],
-                            'data': data
-                        }
-                    # For transits, we need to also store the transiting planet's position to find its house later
+                        active_aspects[name] = {'start': current_date, 'orb_readings': [], 'data': data}
                     if tier == 'transits':
                         p1_pos = day_data['transit_pos'][data['p1']][0]
                         active_aspects[name]['orb_readings'].append((current_date, data['orb'], p1_pos))
                     else:
-                         active_aspects[name]['orb_readings'].append((current_date, data['orb']))
+                        active_aspects[name]['orb_readings'].append((current_date, data['orb']))
 
-
-                # Check for newly ended aspects
                 ended_names = set(active_aspects.keys()) - set(todays_aspects.keys())
                 for name in ended_names:
                     event = active_aspects.pop(name)
                     if not event['orb_readings']: continue
-
-                    # Find the date of the closest approach within this specific event pass
                     exact_reading = min(event['orb_readings'], key=lambda x: x[1])
-                    exact_date_for_pass = exact_reading[0]
-
                     final_event = {
-                        'name': name,
-                        'start': event['start'],
-                        'end': current_date,
-                        'tier': tier,
-                        'exact_date': exact_date_for_pass,
-                        'orb_readings': event['orb_readings'],
-                        'aspect': event['data']['aspect'],
-                        'p1': event['data'].get('p1'),
-                        'p2': event['data'].get('p2')
+                        'name': name, 'start': event['start'], 'end': current_date, 'tier': tier,
+                        'exact_date': exact_reading[0], 'orb_readings': event['orb_readings'],
+                        'aspect': event['data']['aspect'], 'p1': event['data'].get('p1'), 'p2': event['data'].get('p2')
                     }
-                    # For transits, we also need to carry over the position at the most exact moment of the pass
                     if tier == 'transits' and len(exact_reading) > 2:
-                         final_event['p1_pos_at_exact_pass'] = exact_reading[2]
-
-
+                        final_event['p1_pos_at_exact_pass'] = exact_reading[2]
                     raw_events.append(final_event)
 
-        # Step 2: Separate progression events from transit events
         prog_events = [e for e in raw_events if e['tier'] != 'transits']
         transit_events = [e for e in raw_events if e['tier'] == 'transits']
 
-        # Step 3: Merge multi-pass transits into single events
         merged_transits = {}
         for event in transit_events:
             name = event['name']
             if name not in merged_transits:
-                merged_transits[name] = event # Start with the first event dict
+                merged_transits[name] = event
                 merged_transits[name]['exact_dates'] = [event['exact_date']]
-                merged_transits[name]['orb_readings'] = list(event['orb_readings'])
             else:
-                # Merge the event with the existing one
                 existing = merged_transits[name]
                 existing['start'] = min(existing['start'], event['start'])
                 existing['end'] = max(existing['end'], event['end'])
                 existing['exact_dates'].append(event['exact_date'])
                 existing['orb_readings'].extend(event['orb_readings'])
 
-        # Step 4: Finalize merged transits by finding one representative 'exact_date' for layout
         final_transit_events = []
         for name, event in merged_transits.items():
             if not event['orb_readings']: continue
-            # Find the single most exact moment across all passes for positioning the grid box
             most_exact_reading = min(event['orb_readings'], key=lambda x: x[1])
             event['exact_date'] = most_exact_reading[0]
             if len(most_exact_reading) > 2:
                 event['p1_pos_at_exact'] = most_exact_reading[2]
-            # Sort the exact dates from each pass chronologically for cleaner display
             event['exact_dates'].sort()
             final_transit_events.append(event)
 
-        # Step 5: Combine the lists for the final result
         self.aspect_events = prog_events + final_transit_events
 
-    # --- Layout & Drawing ---
+    def _get_glyph_label(self, p1, aspect, p2, is_transit=False):
+        """Constructs the glyph string for an event."""
+        p1_glyph = GLYPH_MAP.get(p1, '?')
+        aspect_glyph = GLYPH_MAP.get(aspect, '?')
+        p2_glyph = GLYPH_MAP.get(p2, '?')
+        p_glyph = GLYPH_MAP.get('(P)', 'P')
 
-    def _assign_layout_lanes(self, events, is_grid=False):
+        if is_transit:
+            # Transit: T. Planet Aspect N. Planet
+            return f"{p1_glyph} {aspect_glyph} {p2_glyph}"
+        else:
+            # Progression: P. Planet (P) Aspect P. Planet (P)
+            return f"{p1_glyph}{p_glyph} {aspect_glyph} {p2_glyph}{p_glyph}"
+
+    def _perform_layout(self, events, metrics, y_start, lane_height, is_grid=False):
         """
-        Assigns a vertical 'lane' to each event to prevent overlapping.
-        :param events: A list of event dictionaries.
-        :param is_grid: If True, uses a simpler check for grid boxes.
-        :return: A list of the same events, with an added 'lane' key.
+        A more advanced layout algorithm to prevent overlaps.
+        Assigns a 'lane' and a final 'y_pos' to each event.
         """
         if not events:
             return []
 
-        # Sort events by start time, crucial for the greedy algorithm
         sorted_events = sorted(events, key=lambda e: e['start'])
-
-        lanes = [] # Each item in this list represents the last event in that lane
+        lanes = []  # Stores the end time of the last event in each lane
 
         for event in sorted_events:
+            event_start_x = self._date_to_x(event['start'])
+            event_end_x = self._date_to_x(event['end'])
+
+            if is_grid:
+                # For grid boxes, the "width" is fixed and centered on the exact date
+                grid_width = 170
+                event_start_x = self._date_to_x(event['exact_date']) - (grid_width / 2)
+                event_end_x = event_start_x + grid_width
+            else:
+                # For progression lines, we also need to account for the label width
+                label = self._get_glyph_label(event['p1'], event['aspect'], event['p2'])
+                label_width = metrics.horizontalAdvance(label) + 15 # Add padding
+                event_start_x -= label_width
+
             placed = False
-            # Find the first lane where this event can fit
-            for i, lane_end_event in enumerate(lanes):
-                # Check for temporal overlap
-                if event['start'] >= lane_end_event['end']:
-                     # This lane is free. Check for horizontal grid overlap if needed.
-                    if is_grid:
-                        grid_width = 175 # give it a bit more padding
-                        event_x = self._date_to_x(event['exact_date'])
-                        lane_event_x = self._date_to_x(lane_end_event['exact_date'])
-                        if abs(event_x - lane_event_x) < grid_width:
-                            continue # Horizontally too close, try next lane
-                    lanes[i] = event
+            for i, lane_end_x in enumerate(lanes):
+                if event_start_x >= lane_end_x:
+                    lanes[i] = event_end_x
                     event['lane'] = i
                     placed = True
                     break
 
             if not placed:
                 event['lane'] = len(lanes)
-                lanes.append(event)
+                lanes.append(event_end_x)
+
+        # Assign y_pos based on the calculated lane
+        for event in sorted_events:
+            event['y_pos'] = y_start + event['lane'] * lane_height
 
         return sorted_events
-
 
     def paintEvent(self, event):
         super().paintEvent(event)
@@ -254,16 +241,15 @@ class TimelineGridWidget(QFrame):
 
         self._draw_month_header(painter)
 
-        # Define drawing areas based on the new layout
+        # Define vertical layout parameters
         lunar_y_start = 110
         transit_y_start = 250
         other_prog_y_start = self.height() - 250
 
-
-        # Draw the tiers in their new positions
-        self._draw_progression_tier(painter, 'lunar_prog', self.colors['lunar'], lunar_y_start)
-        self._draw_transit_tier(painter, transit_y_start)
-        self._draw_progression_tier(painter, 'other_prog', self.colors['solar'], other_prog_y_start)
+        # Perform layout and draw each tier
+        self._layout_and_draw_progression_tier(painter, 'lunar_prog', self.colors['lunar'], lunar_y_start)
+        self._layout_and_draw_transit_tier(painter, transit_y_start)
+        self._layout_and_draw_progression_tier(painter, 'other_prog', self.colors['solar'], other_prog_y_start)
 
     def _draw_month_header(self, painter):
         header_y, box_height = 40, 30
@@ -292,15 +278,17 @@ class TimelineGridWidget(QFrame):
             painter.setPen(self.colors['text'])
             painter.drawText(month_rect, Qt.AlignmentFlag.AlignCenter, label)
 
-    def _draw_progression_tier(self, painter, tier_name, color, y_start):
+    def _layout_and_draw_progression_tier(self, painter, tier_name, color, y_start):
         events = [e for e in self.aspect_events if e['tier'] == tier_name]
-        laid_out_events = self._assign_layout_lanes(events)
 
-        lane_height = 35 # Increased spacing for readability
-        label_offset = 120 # Space on the left for labels
+        # Use QFontMetrics with the glyph font to measure labels accurately
+        metrics = QFontMetrics(self.fonts['glyph'])
+        lane_height = metrics.height() + 15  # Dynamic lane height based on font size + padding
+
+        laid_out_events = self._perform_layout(events, metrics, y_start, lane_height)
 
         for event in laid_out_events:
-            y_pos = y_start + event['lane'] * lane_height
+            y_pos = event['y_pos']
             start_x = self._date_to_x(event['start'])
             end_x = self._date_to_x(event['end'])
 
@@ -317,54 +305,34 @@ class TimelineGridWidget(QFrame):
             exact_x = self._date_to_x(event['exact_date'])
             self._draw_glow_text(painter, QPointF(exact_x - 4, y_pos + 5), "*", self.fonts['star'], self.colors['star'])
 
-            # Draw arrow indicators for near-exact orbs (12 arcminutes = 0.2 degrees)
-            for orb_reading in event['orb_readings']:
-                orb = orb_reading[1]
-                if orb < 0.2:
-                    arrow_x = self._date_to_x(orb_reading[0])
-                    self._draw_arrow_indicator(painter, QPointF(arrow_x, y_pos), color)
+            # Draw the new glyph-based label
+            label = self._get_glyph_label(event['p1'], event['aspect'], event['p2'])
+            label_width = metrics.horizontalAdvance(label)
+            label_x = start_x - label_width - 10 # Position left of the line start
+            label_y = y_pos + (metrics.ascent() / 2) - 3 # Vertically center on the line
 
-            # Draw label to the left of the line
-            label = f"P. {event['p1']} {event['aspect']} P. {event['p2']}"
-            painter.setFont(self.fonts['grid'])
+            painter.setFont(self.fonts['glyph'])
             painter.setPen(self.colors['text'])
-            label_rect = QRectF(start_x - label_offset - 5, y_pos - 10, label_offset, 20)
-            painter.drawText(label_rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight, label)
+            painter.drawText(QPointF(label_x, label_y), label)
 
+    def _layout_and_draw_transit_tier(self, painter, y_start):
+        events = [e for e in self.aspect_events if e['tier'] == 'transits']
 
-    def _draw_transit_tier(self, painter, y_start):
-        transit_events = [e for e in self.aspect_events if e['tier'] == 'transits']
-        laid_out_events = self._assign_layout_lanes(transit_events, is_grid=True)
+        metrics = QFontMetrics(self.fonts['grid']) # Not used for layout here, but for drawing
+        grid_height = 85
+        lane_height = grid_height + 20 # Spacing between boxes
 
-        grid_width, grid_height = 170, 85
-        lane_height = grid_height + 25 # Extra spacing
+        laid_out_events = self._perform_layout(events, metrics, y_start, lane_height, is_grid=True)
 
         for event in laid_out_events:
+            grid_width = 170
             x_pos = self._date_to_x(event['exact_date']) - (grid_width / 2)
-            y_pos = y_start + event['lane'] * lane_height
+            y_pos = event['y_pos']
 
             # Clamp grid position to be within view
             if x_pos < self.padding: x_pos = self.padding
             if x_pos + grid_width > self.width() - self.padding:
                 x_pos = self.width() - self.padding - grid_width
-
-            # Draw connecting arrow and date labels
-            grid_center_x = x_pos + grid_width / 2
-            arrow_start_y = y_pos
-            arrow_end_y = y_pos - 10 # Point slightly above the box
-
-            painter.setPen(QPen(self.colors['transit'], 1))
-            painter.drawLine(QPointF(grid_center_x, arrow_start_y), QPointF(grid_center_x, arrow_end_y))
-            # Arrowhead
-            painter.drawLine(QPointF(grid_center_x, arrow_end_y), QPointF(grid_center_x - 3, arrow_end_y + 5))
-            painter.drawLine(QPointF(grid_center_x, arrow_end_y), QPointF(grid_center_x + 3, arrow_end_y + 5))
-
-            # Draw date labels above the arrow
-            date_labels = sorted(list(set([d.strftime('%b %d') for d in event['exact_dates']])))
-            date_str = ", ".join(date_labels)
-            painter.setFont(self.fonts['grid'])
-            painter.setPen(self.colors['text'])
-            painter.drawText(QPointF(grid_center_x + 5, arrow_end_y - 2), date_str)
 
             self._draw_single_transit_grid(painter, QRectF(x_pos, y_pos, grid_width, grid_height), event)
 
@@ -377,42 +345,59 @@ class TimelineGridWidget(QFrame):
         p2 = event_data.get('p2') # Natal planet
         if not p1 or not p2 or p2 not in self.natal_planets: return
 
+        # Draw connecting arrow and date labels
+        grid_center_x = rect.center().x()
+        arrow_start_y = rect.top()
+        arrow_end_y = arrow_start_y - 10
+        painter.setPen(QPen(self.colors['transit'], 1))
+        painter.drawLine(QPointF(grid_center_x, arrow_start_y), QPointF(grid_center_x, arrow_end_y))
+        painter.drawLine(QPointF(grid_center_x, arrow_end_y), QPointF(grid_center_x - 3, arrow_end_y + 5))
+        painter.drawLine(QPointF(grid_center_x, arrow_end_y), QPointF(grid_center_x + 3, arrow_end_y + 5))
+
+        date_labels = sorted(list(set([d.strftime('%b %d') for d in event_data['exact_dates']])))
+        date_str = ", ".join(date_labels)
         painter.setFont(self.fonts['grid'])
         painter.setPen(self.colors['text'])
+        painter.drawText(QPointF(grid_center_x + 5, arrow_end_y - 2), date_str)
 
-        # Line 1: Aspect Name
-        painter.drawText(rect.adjusted(5, 5, -5, -5), Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft, event_data['name'])
+
+        # --- Draw Grid Content ---
+        painter.setFont(self.fonts['glyph'])
+        painter.setPen(self.colors['text'])
+
+        # Line 1: Glyph-based aspect name
+        glyph_label = self._get_glyph_label(p1, event_data['aspect'], p2, is_transit=True)
+        painter.drawText(rect.adjusted(8, 5, -5, -5), Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft, glyph_label)
+
+        # Subsequent lines use regular font
+        painter.setFont(self.fonts['grid'])
 
         # Line 2: Natal Planet Position
         natal_pos_str = format_longitude(self.natal_planets[p2][0])
         natal_house = self._get_natal_house_for_planet(p2)
-        painter.drawText(rect.adjusted(5, 22, -5, -5), Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft, f"Natal {p2}: {natal_pos_str} (H{natal_house})")
+        painter.drawText(rect.adjusted(8, 25, -5, -5), Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft, f"Natal: {natal_pos_str} (H{natal_house})")
 
-        # Line 3: Transiting Planet Info (at time of most exact aspect)
+        # Line 3: Transiting Planet Info
         transiting_pos_at_exact = event_data.get('p1_pos_at_exact')
         if transiting_pos_at_exact is not None:
             transiting_pos_str = format_longitude(transiting_pos_at_exact)
             transiting_house = self._get_house_for_position(transiting_pos_at_exact)
-            painter.drawText(rect.adjusted(5, 39, -5, -5), Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft, f"In House: {transiting_house}")
+            painter.drawText(rect.adjusted(8, 42, -5, -5), Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft, f"In House: {transiting_house}")
 
         # Line 4: Ruled Houses
         ruled_p1 = get_ruled_houses_for_planet(p1, self.natal_houses)
         ruled_p2 = get_ruled_houses_for_planet(p2, self.natal_houses)
         ruled_p1_str = f"{p1}: " + (",".join(ruled_p1) if ruled_p1 else "None")
         ruled_p2_str = f"{p2}: " + (",".join(ruled_p2) if ruled_p2 else "None")
-        painter.drawText(rect.adjusted(5, 56, -5, -5), Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft, f"Rules: {ruled_p1_str} | {ruled_p2_str}")
-
+        painter.drawText(rect.adjusted(8, 59, -5, -5), Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft, f"Rules: {ruled_p1_str} | {ruled_p2_str}")
 
     # --- Helpers & Utilities ---
 
     def _get_house_for_position(self, position):
-        """Finds the house number for a given planetary degree."""
         if not self.natal_houses or position is None: return "N/A"
         for i in range(11):
-            # Standard case for houses 1-11
             if self.natal_houses[i] <= position < self.natal_houses[i+1]:
                 return str(i + 1)
-        # Handle wrap-around for 12th house
         if self.natal_houses[11] <= position < 360 or 0 <= position < self.natal_houses[0]:
             return "12"
         return "N/A"
@@ -420,33 +405,15 @@ class TimelineGridWidget(QFrame):
     def _get_natal_house_for_planet(self, planet_name):
         if not self.natal_houses or planet_name not in self.natal_planets: return "N/A"
         planet_pos = self.natal_planets[planet_name][0]
-        for i in range(11):
-            if self.natal_houses[i] <= planet_pos < self.natal_houses[i+1]: return str(i + 1)
-        if self.natal_houses[11] <= planet_pos < 360 or 0 <= planet_pos < self.natal_houses[0]: return "12"
-        return "N/A"
+        return self._get_house_for_position(planet_pos)
 
     def _date_to_x(self, date):
+        if not self.start_date or self.months_to_display == 0:
+            return self.padding
         total_days = self.months_to_display * 30
-        if total_days == 0: return self.padding
         days_from_start = (date - self.start_date).total_seconds() / (24 * 3600)
         proportion = days_from_start / total_days
         return self.padding + proportion * self.content_width
-
-    def _draw_arrow_indicator(self, painter, point, color):
-        painter.setPen(QPen(color, 1))
-        painter.setBrush(QBrush(color))
-        arrow = QPainterPath()
-        arrow.moveTo(point.x(), point.y() - 5)
-        arrow.lineTo(point.x() - 3, point.y() - 9)
-        arrow.lineTo(point.x() + 3, point.y() - 9)
-        arrow.closeSubpath()
-        painter.drawPath(arrow)
-
-    def _draw_glow_line(self, painter, p1, p2, color):
-        # Simplified for clarity, focusing on a single, clear line
-        pen = QPen(color, 1.5, Qt.PenStyle.SolidLine, cap=Qt.PenCapStyle.RoundCap)
-        painter.setPen(pen)
-        painter.drawLine(p1, p2)
 
     def _draw_glow_rect(self, painter, rect, color):
         painter.setPen(QPen(color, 1))
@@ -459,7 +426,7 @@ class TimelineGridWidget(QFrame):
         painter.drawText(point, text)
 
     def mouseMoveEvent(self, event):
-        # This needs to be updated to work with the new dynamic Y positions
-        # For now, disabling it to prevent incorrect tooltips.
+        # Tooltip logic would need to be updated to work with the new layout.
+        # Disabling for now.
         QToolTip.hideText()
         super().mouseMoveEvent(event)

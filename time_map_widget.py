@@ -9,8 +9,11 @@ from datetime import datetime, timedelta
 
 class TimeMapWidget(QWidget):
     """A custom widget to display the 'Time Map' timeline view."""
-    def __init__(self):
+    def __init__(self, astro_font=None):
         super().__init__()
+
+        self.astro_font = astro_font # Store the font
+
         self.setAutoFillBackground(True)
         palette = self.palette()
         palette.setColor(self.backgroundRole(), QColor("#000000")) # Changed background to black
@@ -149,7 +152,7 @@ class TimeMapWidget(QWidget):
 
 
         # 3. Timeline Grid Container
-        self.timeline_grid = TimelineGridWidget()
+        self.timeline_grid = TimelineGridWidget(astro_font=self.astro_font)
 
         # Add widgets to main layout
         main_layout.addLayout(header_layout)
