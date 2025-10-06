@@ -4,7 +4,8 @@ from datetime import datetime, timezone, timedelta
 # --- Centralized list of planets for consistency ---
 PLANETS = {
     'Sun': swe.SUN, 'Moon': swe.MOON, 'Mercury': swe.MERCURY, 'Venus': swe.VENUS, 'Mars': swe.MARS,
-    'Jupiter': swe.JUPITER, 'Saturn': swe.SATURN, 'Uranus': swe.URANUS, 'Neptune': swe.NEPTUNE, 'Pluto': swe.PLUTO
+    'Jupiter': swe.JUPITER, 'Saturn': swe.SATURN, 'Uranus': swe.URANUS, 'Neptune': swe.NEPTUNE, 'Pluto': swe.PLUTO,
+    'N. Node': swe.TRUE_NODE
 }
 
 def get_planet_position(calculation_date, planet_id):
