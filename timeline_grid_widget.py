@@ -246,6 +246,12 @@ class TimelineGridWidget(QFrame):
 
     def paintEvent(self, event):
         super().paintEvent(event)
+
+        # Guard clause: If the widget is not ready to draw, do nothing.
+        # This prevents QPainter errors on startup before data is loaded.
+        if not self.start_date or self.months_to_display == 0:
+            return
+
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
