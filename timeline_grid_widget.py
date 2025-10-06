@@ -86,19 +86,33 @@ class TimelineGridWidget(QFrame):
         self.timeline_aspects_cache = {}
         num_days = self.months_to_display * 30
 
+        # Set the standard orb for progressions to 1.0 degree, as per requirements.
+        prog_orb = 1.0
+
         for i in range(num_days + 2):
             current_date = self.start_date + timedelta(days=i - 1)
             date_key = current_date.strftime('%Y-%m-%d')
 
+            # --- Base Planet Calculations ---
             transit_planets = {name: get_planet_position(current_date, pid) for name, pid in PLANETS.items()}
             progressed_planets = calculate_secondary_progressions(self.birth_date, current_date)
 
-            prog_aspects = calculate_aspects(progressed_planets, 1.0)
+            # --- Tier-Specific Aspect Calculations ---
+
+            # 1. Calculate all progressed aspects at once (includes North Node now)
+            all_prog_aspects = calculate_aspects(progressed_planets, prog_orb)
+
+            # 2. Filter aspects into their respective tiers
+            lunar_prog_aspects = [
+                a for a in all_prog_aspects if 'Moon' in (a['p1'], a['p2'])
+            ]
+            other_prog_aspects = [
+                a for a in all_prog_aspects if 'Moon' not in (a['p1'], a['p2'])
+            ]
+
+            # 3. Transits (Major transiting planets to all natal planets, including Node)
             major_transits = {p: transit_planets[p] for p in ['Jupiter', 'Saturn', 'Uranus', 'Neptune', 'Pluto']}
             transit_aspects = find_cross_aspects(major_transits, self.natal_planets, 2.0)
-
-            lunar_prog_aspects = [a for a in prog_aspects if a['p1'] == 'Moon' and a['p2'] != 'Moon']
-            other_prog_aspects = [a for a in prog_aspects if 'Moon' not in (a['p1'], a['p2'])]
 
             self.timeline_aspects_cache[date_key] = {
                 'lunar_prog': lunar_prog_aspects,
@@ -191,6 +205,8 @@ class TimelineGridWidget(QFrame):
         """
         A more advanced layout algorithm to prevent overlaps.
         Assigns a 'lane' and a final 'y_pos' to each event.
+        This version simplifies the logic by assuming labels are drawn above the event lines,
+        not to the left, thus not affecting the horizontal layout calculation.
         """
         if not events:
             return []
@@ -207,13 +223,9 @@ class TimelineGridWidget(QFrame):
                 grid_width = 170
                 event_start_x = self._date_to_x(event['exact_date']) - (grid_width / 2)
                 event_end_x = event_start_x + grid_width
-            else:
-                # For progression lines, we also need to account for the label width
-                label = self._get_glyph_label(event['p1'], event['aspect'], event['p2'])
-                label_width = metrics.horizontalAdvance(label) + 15 # Add padding
-                event_start_x -= label_width
 
             placed = False
+            # Find the first lane where this event can fit without temporal overlap
             for i, lane_end_x in enumerate(lanes):
                 if event_start_x >= lane_end_x:
                     lanes[i] = event_end_x
@@ -222,6 +234,7 @@ class TimelineGridWidget(QFrame):
                     break
 
             if not placed:
+                # No free lanes, so create a new one
                 event['lane'] = len(lanes)
                 lanes.append(event_end_x)
 
@@ -281,39 +294,42 @@ class TimelineGridWidget(QFrame):
     def _layout_and_draw_progression_tier(self, painter, tier_name, color, y_start):
         events = [e for e in self.aspect_events if e['tier'] == tier_name]
 
-        # Use QFontMetrics with the glyph font to measure labels accurately
         metrics = QFontMetrics(self.fonts['glyph'])
-        lane_height = metrics.height() + 15  # Dynamic lane height based on font size + padding
+        # Increase lane height to accommodate labels above the line
+        lane_height = metrics.height() + 25
 
         laid_out_events = self._perform_layout(events, metrics, y_start, lane_height)
 
         for event in laid_out_events:
-            y_pos = event['y_pos']
             start_x = self._date_to_x(event['start'])
             end_x = self._date_to_x(event['end'])
 
-            # Draw the main aspect line
-            pen = QPen(color, 1.5, Qt.PenStyle.SolidLine)
-            painter.setPen(pen)
-            painter.drawLine(QPointF(start_x, y_pos), QPointF(end_x, y_pos))
+            # The Y position from the layout is the top of the lane.
+            # The line itself is drawn lower down.
+            lane_top_y = event['y_pos']
+            line_y = lane_top_y + metrics.height() + 5
 
-            # Draw start and end ticks
-            painter.drawLine(QPointF(start_x, y_pos - 3), QPointF(start_x, y_pos + 3))
-            painter.drawLine(QPointF(end_x, y_pos - 3), QPointF(end_x, y_pos + 3))
-
-            # Draw the "firework" for the exact aspect
-            exact_x = self._date_to_x(event['exact_date'])
-            self._draw_glow_text(painter, QPointF(exact_x - 4, y_pos + 5), "*", self.fonts['star'], self.colors['star'])
-
-            # Draw the new glyph-based label
+            # 1. Draw the glyph-based label at the top-left of the line's start
             label = self._get_glyph_label(event['p1'], event['aspect'], event['p2'])
-            label_width = metrics.horizontalAdvance(label)
-            label_x = start_x - label_width - 10 # Position left of the line start
-            label_y = y_pos + (metrics.ascent() / 2) - 3 # Vertically center on the line
-
             painter.setFont(self.fonts['glyph'])
             painter.setPen(self.colors['text'])
-            painter.drawText(QPointF(label_x, label_y), label)
+            painter.drawText(QPointF(start_x, lane_top_y + metrics.ascent()), label)
+
+            # 2. Draw the main aspect line
+            pen = QPen(color, 1.5, Qt.PenStyle.SolidLine)
+            painter.setPen(pen)
+            painter.drawLine(QPointF(start_x, line_y), QPointF(end_x, line_y))
+
+            # 3. Draw arrow indicators for near-exact orbs (12 arcminutes = 0.2 degrees)
+            for orb_reading in event['orb_readings']:
+                orb = orb_reading[1]
+                if orb < 0.2:
+                    arrow_x = self._date_to_x(orb_reading[0])
+                    self._draw_arrow_indicator(painter, QPointF(arrow_x, line_y), color)
+
+            # 4. Draw the "firework" for the exact aspect
+            exact_x = self._date_to_x(event['exact_date'])
+            self._draw_glow_text(painter, QPointF(exact_x - 4, line_y + 5), "*", self.fonts['star'], self.colors['star'])
 
     def _layout_and_draw_transit_tier(self, painter, y_start):
         events = [e for e in self.aspect_events if e['tier'] == 'transits']
@@ -414,6 +430,11 @@ class TimelineGridWidget(QFrame):
         days_from_start = (date - self.start_date).total_seconds() / (24 * 3600)
         proportion = days_from_start / total_days
         return self.padding + proportion * self.content_width
+
+    def _draw_arrow_indicator(self, painter, point, color):
+        """Draws a small tick on the timeline to indicate a near-exact orb."""
+        painter.setPen(QPen(color, 1.5))
+        painter.drawLine(QPointF(point.x(), point.y() - 4), QPointF(point.x(), point.y() + 4))
 
     def _draw_glow_rect(self, painter, rect, color):
         painter.setPen(QPen(color, 1))
